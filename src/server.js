@@ -42,7 +42,7 @@ async function startServer() {
     morgan(":date[iso] :method :url :status :response-time ms - :remote-addr"),
   );
   app.use(rateLimiter);
-
+  console.log("testing");
   const server = new ApolloServer({
     typeDefs,
     resolvers,
