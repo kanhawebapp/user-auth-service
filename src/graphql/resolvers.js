@@ -3194,16 +3194,18 @@ getPaymentInvoice: async (_, { transactionId }) => {
       throw new Error("Invoice is available only for wallet recharge");
     }
 
-    // Payment find karo
-    const payment = await prisma.payment.findFirst({
-      where: {
-        rechargePackId: transaction.rechargePackId,
-        status: "SUCCESS",
-      },
-      orderBy: {
-        createdAt: "desc",
-      },
-    });
+const userId = transaction.userWallet?.user?.id;
+
+const payment = await prisma.payment.findFirst({
+  where: {
+    rechargePackId: transaction.rechargePackId,
+    status: "SUCCESS",
+    userId: userId,
+  },
+  orderBy: {
+    createdAt: "desc",
+  },
+});
 
     if (!payment) {
       throw new Error("Payment not found");
@@ -3263,14 +3265,14 @@ getPaymentInvoice: async (_, { transactionId }) => {
       userName:
         transaction.userWallet?.user?.name || "-",
 
-      city:
-        transaction.userWallet?.user?.city || "-",
+   city:
+  payment.city || "-",
 
-      state:
-        transaction.userWallet?.user?.state || "-",
+state:
+  payment.state || "-",
 
-      pincode:
-        transaction.userWallet?.user?.pincode || "-",
+pincode:
+  "-", 
 
       country:
         transaction.userWallet?.user?.country || "India",
@@ -3279,16 +3281,16 @@ getPaymentInvoice: async (_, { transactionId }) => {
         transaction.userWallet?.user?.state || "-",
 
       supplierGSTIN:
-        payment.supplierGSTIN || "-",
+        payment.supplierGSTIN || "07ABBFM1961C1ZN",
 
       supplierAddress:
-        payment.supplierAddress || "-",
+        payment.supplierAddress || "2ND FLOOR, 1511/2B, Kotla Mubarakpur, Bhishma Pitamah Marg, Wazir Nagar, New Delhi, South East Delhi, Delhi, 110003",
 
       website:
-        payment.website || "-",
+        payment.website || "www.dhwaniastro.com",
 
       email:
-        payment.email || "-",
+        payment.email || "support@dhwaniastro.com",
 
       recipientGSTIN:
         payment.recipientGSTIN || "-",
