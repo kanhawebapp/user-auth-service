@@ -4165,169 +4165,484 @@ pincode:
 
     // In your resolvers file
 
-    uploadCallRecording: async (
-      _,
-      { recording, roomId, astroId, astroName, userId, duration, callType },
-      context,
-    ) => {
-      try {
-        // Check authentication
-        if (!context.user) {
-          throw new Error("Unauthorized - Please login to upload recordings");
-        }
-        const { createReadStream, filename, mimetype } = await recording;
+    // uploadCallRecording: async (
+    //   _,
+    //   { recording, roomId, astroId, astroName, userId, duration, callType },
+    //   context,
+    // ) => {
+    //   try {
+    //     // Check authentication
+    //     if (!context.user) {
+    //       throw new Error("Unauthorized - Please login to upload recordings");
+    //     }
+    //     const { createReadStream, filename, mimetype } = await recording;
 
-        // Validate file type - allow audio files only
-        const allowedMimeTypes = [
-          "audio/webm",
-          "audio/webm;codecs=opus",
-          "audio/ogg",
-          "audio/mpeg",
-          "audio/mp4",
-          "audio/wav",
-        ];
+    //     // Validate file type - allow audio files only
+    //     const allowedMimeTypes = [
+    //       "audio/webm",
+    //       "audio/webm;codecs=opus",
+    //       "audio/ogg",
+    //       "audio/mpeg",
+    //       "audio/mp4",
+    //       "audio/wav",
+    //     ];
 
-        if (
-          !allowedMimeTypes.some(
-            (type) => mimetype.includes(type) || mimetype.startsWith("audio/"),
-          )
-        ) {
-          throw new Error("Only audio files are allowed for call recordings");
-        }
+    //     if (
+    //       !allowedMimeTypes.some(
+    //         (type) => mimetype.includes(type) || mimetype.startsWith("audio/"),
+    //       )
+    //     ) {
+    //       throw new Error("Only audio files are allowed for call recordings");
+    //     }
 
-        // Generate unique filename
-        const ext = filename.split(".").pop() || "webm";
-        const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-        const newFileName = `call-${roomId}-${timestamp}.${ext}`;
+    //     // Generate unique filename
+    //     const ext = filename.split(".").pop() || "webm";
+    //     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    //     const newFileName = `call-${roomId}-${timestamp}.${ext}`;
 
-        // Create upload directory with restricted permissions
-        const uploadDir = path.join(
-          __dirname,
-          "..",
-          "uploads",
-          "call-recordings",
-        );
-        if (!fs.existsSync(uploadDir)) {
-          fs.mkdirSync(uploadDir, { recursive: true, mode: 0o750 });
-        }
+    //     // Create upload directory with restricted permissions
+    //     const uploadDir = path.join(
+    //       __dirname,
+    //       "..",
+    //       "uploads",
+    //       "call-recordings",
+    //     );
+    //     if (!fs.existsSync(uploadDir)) {
+    //       fs.mkdirSync(uploadDir, { recursive: true, mode: 0o750 });
+    //     }
 
-        console.log("xxxxxxxxxxxxxxxxxxxxxxxxx", uploadDir );
+    //     console.log("xxxxxxxxxxxxxxxxxxxxxxxxx", uploadDir );
         
-        const uploadPath = path.join(uploadDir, newFileName);
-        console.log("yyyyyyyyyyyyyyyyyyyyyyy", uploadPath);
+    //     const uploadPath = path.join(uploadDir, newFileName);
+    //     console.log("yyyyyyyyyyyyyyyyyyyyyyy", uploadPath);
         
 
-        // Save file asynchronously
-        await new Promise((resolve, reject) => {
-          const stream = createReadStream();
-          const out = fs.createWriteStream(uploadPath, { mode: 0o640 });
+    //     // Save file asynchronously
+    //     await new Promise((resolve, reject) => {
+    //       const stream = createReadStream();
+    //       const out = fs.createWriteStream(uploadPath, { mode: 0o640 });
 
-          stream.pipe(out);
-          out.on("finish", resolve);
-          out.on("error", reject);
-          stream.on("error", reject);
-        });
+    //       stream.pipe(out);
+    //       out.on("finish", resolve);
+    //       out.on("error", reject);
+    //       stream.on("error", reject);
+    //     });
 
-        // Get file size
-        const stats = fs.statSync(uploadPath);
-        const fileSize = stats.size;
+    //     // Get file size
+    //     const stats = fs.statSync(uploadPath);
+    //     const fileSize = stats.size;
 
-        // Generate secure file URL
-        const fileToken = Buffer.from(`${roomId}:${Date.now()}`).toString(
-          "base64",
-        );
-        const fileUrl = `https://dhwaniastro.com/v2/uploads/call-recordings/${newFileName}?token=${fileToken}`;
+    //     // Generate secure file URL
+    //     const fileToken = Buffer.from(`${roomId}:${Date.now()}`).toString(
+    //       "base64",
+    //     );
+    //     const fileUrl = `https://dhwaniastro.com/v2/uploads/call-recordings/${newFileName}?token=${fileToken}`;
 
-        // Find session by roomId (optional)
-        let sessionId = null;
-        if (roomId) {
-          const session = await prisma.session.findFirst({
-            where: { roomId: roomId },
-            select: { id: true },
-          });
-          if (session) {
-            sessionId = session.id;
-          }
-        }
+    //     // Find session by roomId (optional)
+    //     let sessionId = null;
+    //     if (roomId) {
+    //       const session = await prisma.session.findFirst({
+    //         where: { roomId: roomId },
+    //         select: { id: true },
+    //       });
+    //       if (session) {
+    //         sessionId = session.id;
+    //       }
+    //     }
 
-        // Save to database using Prisma - MATCHES YOUR SCHEMA
-        const recordingData = await prisma.callRecording.create({
-          data: {
-            roomId: roomId,
-            sessionId: sessionId, // This is a field in your model
-            userId: userId || context.user.id,
-            astrologerId: astroId,
-            astrologerName: astroName || "",
-            fileName: newFileName,
-            fileUrl: fileUrl,
-            filePath: uploadPath,
-            fileSize: fileSize,
-            duration: parseInt(duration) || 0,
-            callType: callType || "audio",
-            timestamp: new Date().toISOString(),
-            status: "active",
-            isAdminOnly: true,
-            uploadedBy: context.user.id || context.user.email || "unknown",
-            uploadedAt: new Date(),
-            metadata: {
-              userAgent: context.user?.userAgent || null,
-              ipAddress: context.user?.ipAddress || null,
-              originalFilename: filename,
-              mimeType: mimetype,
-            },
-          },
-          include: {
-            user: {
-              select: {
-                id: true,
-                name: true,
-                mobile: true,
-              },
-            },
-            astrologer: {
-              select: {
-                id: true,
-                name: true,
-                displayName: true,
-              },
-            },
-            session: {
-              select: {
-                id: true,
-                status: true,
-                type: true,
-              },
-            },
-          },
-        });
+    //     // Save to database using Prisma - MATCHES YOUR SCHEMA
+    //     const recordingData = await prisma.callRecording.create({
+    //       data: {
+    //         roomId: roomId,
+    //         sessionId: sessionId, // This is a field in your model
+    //         userId: userId || context.user.id,
+    //         astrologerId: astroId,
+    //         astrologerName: astroName || "",
+    //         fileName: newFileName,
+    //         fileUrl: fileUrl,
+    //         filePath: uploadPath,
+    //         fileSize: fileSize,
+    //         duration: parseInt(duration) || 0,
+    //         callType: callType || "audio",
+    //         timestamp: new Date().toISOString(),
+    //         status: "active",
+    //         isAdminOnly: true,
+    //         uploadedBy: context.user.id || context.user.email || "unknown",
+    //         uploadedAt: new Date(),
+    //         metadata: {
+    //           userAgent: context.user?.userAgent || null,
+    //           ipAddress: context.user?.ipAddress || null,
+    //           originalFilename: filename,
+    //           mimeType: mimetype,
+    //         },
+    //       },
+    //       include: {
+    //         user: {
+    //           select: {
+    //             id: true,
+    //             name: true,
+    //             mobile: true,
+    //           },
+    //         },
+    //         astrologer: {
+    //           select: {
+    //             id: true,
+    //             name: true,
+    //             displayName: true,
+    //           },
+    //         },
+    //         session: {
+    //           select: {
+    //             id: true,
+    //             status: true,
+    //             type: true,
+    //           },
+    //         },
+    //       },
+    //     });
 
-        return {
-          success: true,
-          message: "Call recording uploaded successfully (Admin only access)",
-          recording: {
-            id: recordingData.id,
-            roomId: recordingData.roomId,
-            astroId: recordingData.astrologerId,
-            astroName: recordingData.astrologerName,
-            userId: recordingData.userId,
-            duration: recordingData.duration,
-            callType: recordingData.callType,
-            recordingUrl: recordingData.fileUrl,
-            createdAt: recordingData.createdAt.toISOString(),
-            updatedAt: recordingData.updatedAt.toISOString(),
-          },
-          fileUrl: fileUrl,
-        };
-      } catch (error) {
-        console.error("uploadCallRecording error:", error);
-        return {
-          success: false,
-          message: error.message || "Failed to upload call recording",
-          recording: null,
-          fileUrl: null,
-        };
+    //     return {
+    //       success: true,
+    //       message: "Call recording uploaded successfully (Admin only access)",
+    //       recording: {
+    //         id: recordingData.id,
+    //         roomId: recordingData.roomId,
+    //         astroId: recordingData.astrologerId,
+    //         astroName: recordingData.astrologerName,
+    //         userId: recordingData.userId,
+    //         duration: recordingData.duration,
+    //         callType: recordingData.callType,
+    //         recordingUrl: recordingData.fileUrl,
+    //         createdAt: recordingData.createdAt.toISOString(),
+    //         updatedAt: recordingData.updatedAt.toISOString(),
+    //       },
+    //       fileUrl: fileUrl,
+    //     };
+    //   } catch (error) {
+    //     console.error("uploadCallRecording error:", error);
+    //     return {
+    //       success: false,
+    //       message: error.message || "Failed to upload call recording",
+    //       recording: null,
+    //       fileUrl: null,
+    //     };
+    //   }
+    // },
+    
+uploadCallRecording: async (
+  _,
+  { recording, roomId, astroId, astroName, userId, duration, callType },
+  context,
+) => {
+  try {
+    // --------------------------------
+    // AUTHENTICATION
+    // --------------------------------
+
+    if (!context.user) {
+      throw new Error("Unauthorized - Please login to upload recordings");
+    }
+
+    const { createReadStream, filename, mimetype } = await recording;
+
+    // --------------------------------
+    // VALIDATE FILE TYPE
+    // --------------------------------
+
+    const allowedMimeTypes = [
+      "audio/webm",
+      "audio/webm;codecs=opus",
+      "audio/ogg",
+      "audio/mpeg",
+      "audio/mp4",
+      "audio/wav",
+    ];
+
+    const isValidMimeType =
+      allowedMimeTypes.some((type) => mimetype.includes(type)) ||
+      mimetype.startsWith("audio/");
+
+    if (!isValidMimeType) {
+      throw new Error("Only audio files are allowed for call recordings");
+    }
+
+    // --------------------------------
+    // GENERATE UNIQUE FILE NAME
+    // --------------------------------
+
+    const ext = filename?.split(".").pop() || "webm";
+
+    const timestamp = new Date()
+      .toISOString()
+      .replace(/[:.]/g, "-");
+
+    const newFileName = `call-${roomId}-${timestamp}.${ext}`;
+
+    // --------------------------------
+    // SHARED DOCKER DIRECTORY
+    // --------------------------------
+    //
+    // Docker Compose:
+    //
+    // /var/www/chat-uploads:/shared/chat-uploads
+    //
+    // Container path:
+    // /shared/chat-uploads
+    //
+    // Server path:
+    // /var/www/chat-uploads
+    //
+    // --------------------------------
+
+    const uploadDir = path.join(
+      "/shared/chat-uploads",
+      "call-recordings",
+    );
+
+    // Create directory if it doesn't exist
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, {
+        recursive: true,
+        mode: 0o750,
+      });
+    }
+
+    console.log("Recording upload directory:", uploadDir);
+
+    // --------------------------------
+    // FINAL FILE PATH
+    // --------------------------------
+
+    const uploadPath = path.join(
+      uploadDir,
+      newFileName,
+    );
+
+    console.log("Recording upload path:", uploadPath);
+
+    // --------------------------------
+    // SAVE RECORDING
+    // --------------------------------
+
+    await new Promise((resolve, reject) => {
+      const stream = createReadStream();
+
+      const out = fs.createWriteStream(uploadPath, {
+        mode: 0o640,
+      });
+
+      stream.pipe(out);
+
+      out.on("finish", resolve);
+
+      out.on("error", reject);
+
+      stream.on("error", reject);
+    });
+
+    // --------------------------------
+    // VERIFY FILE
+    // --------------------------------
+
+    if (!fs.existsSync(uploadPath)) {
+      throw new Error("Recording file was not created");
+    }
+
+    const stats = fs.statSync(uploadPath);
+
+    const fileSize = stats.size;
+
+    console.log("Recording saved successfully");
+    console.log("Container path:", uploadPath);
+    console.log("File size:", fileSize);
+
+    // --------------------------------
+    // FILE URL
+    // --------------------------------
+
+    const fileToken = Buffer.from(
+      `${roomId}:${Date.now()}`,
+    ).toString("base64");
+
+    const fileUrl =
+      `https://dhwaniastro.com/v2/uploads/call-recordings/${newFileName}?token=${fileToken}`;
+
+    // --------------------------------
+    // FIND SESSION
+    // --------------------------------
+
+    let sessionId = null;
+
+    if (roomId) {
+      const session = await prisma.session.findFirst({
+        where: {
+          roomId: roomId,
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      if (session) {
+        sessionId = session.id;
       }
-    },
+    }
+
+    // --------------------------------
+    // SAVE RECORDING IN DATABASE
+    // --------------------------------
+
+    const recordingData =
+      await prisma.callRecording.create({
+        data: {
+          roomId: roomId,
+
+          sessionId: sessionId,
+
+          userId:
+            userId || context.user.id,
+
+          astrologerId: astroId,
+
+          astrologerName:
+            astroName || "",
+
+          fileName: newFileName,
+
+          fileUrl: fileUrl,
+
+          // IMPORTANT:
+          // Store SERVER-MOUNTED PATH
+          filePath: `/var/www/chat-uploads/call-recordings/${newFileName}`,
+
+          fileSize: fileSize,
+
+          duration:
+            parseInt(duration) || 0,
+
+          callType:
+            callType || "audio",
+
+          timestamp:
+            new Date().toISOString(),
+
+          status: "active",
+
+          isAdminOnly: true,
+
+          uploadedBy:
+            context.user.id ||
+            context.user.email ||
+            "unknown",
+
+          uploadedAt: new Date(),
+
+          metadata: {
+            userAgent:
+              context.user?.userAgent || null,
+
+            ipAddress:
+              context.user?.ipAddress || null,
+
+            originalFilename:
+              filename,
+
+            mimeType:
+              mimetype,
+          },
+        },
+
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              mobile: true,
+            },
+          },
+
+          astrologer: {
+            select: {
+              id: true,
+              name: true,
+              displayName: true,
+            },
+          },
+
+          session: {
+            select: {
+              id: true,
+              status: true,
+              type: true,
+            },
+          },
+        },
+      });
+
+    // --------------------------------
+    // RESPONSE
+    // --------------------------------
+
+    return {
+      success: true,
+
+      message:
+        "Call recording uploaded successfully (Admin only access)",
+
+      recording: {
+        id: recordingData.id,
+
+        roomId:
+          recordingData.roomId,
+
+        astroId:
+          recordingData.astrologerId,
+
+        astroName:
+          recordingData.astrologerName,
+
+        userId:
+          recordingData.userId,
+
+        duration:
+          recordingData.duration,
+
+        callType:
+          recordingData.callType,
+
+        recordingUrl:
+          recordingData.fileUrl,
+
+        createdAt:
+          recordingData.createdAt.toISOString(),
+
+        updatedAt:
+          recordingData.updatedAt.toISOString(),
+      },
+
+      fileUrl: fileUrl,
+    };
+  } catch (error) {
+    console.error(
+      "uploadCallRecording error:",
+      error,
+    );
+
+    return {
+      success: false,
+
+      message:
+        error.message ||
+        "Failed to upload call recording",
+
+      recording: null,
+
+      fileUrl: null,
+    };
+  }
+},
+
+
 
     verifyServiceCoupon: async (_, { input }, context) => {
       try {
