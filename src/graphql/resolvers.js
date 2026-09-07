@@ -4211,7 +4211,11 @@ pincode:
           fs.mkdirSync(uploadDir, { recursive: true, mode: 0o750 });
         }
 
+        console.log("xxxxxxxxxxxxxxxxxxxxxxxxx", uploadDir );
+        
         const uploadPath = path.join(uploadDir, newFileName);
+        console.log("yyyyyyyyyyyyyyyyyyyyyyy", uploadPath);
+        
 
         // Save file asynchronously
         await new Promise((resolve, reject) => {
