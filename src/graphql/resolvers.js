@@ -2882,7 +2882,6 @@ module.exports = {
       return data;
     },
     getSimilarAstrologers: async (_, { astrologerId }, context) => {
-      
       try {
         // if (!context.user) {
         //   throw new Error("Unauthorized");
@@ -3171,153 +3170,127 @@ module.exports = {
         },
       });
     },
-getPaymentInvoice: async (_, { transactionId }) => {
-  try {
-    const transaction = await prisma.walletTransaction.findUnique({
-      where: {
-        id: transactionId,
-      },
-      include: {
-        userWallet: {
-          include: {
-            user: true,
+    getPaymentInvoice: async (_, { transactionId }) => {
+      try {
+        const transaction = await prisma.walletTransaction.findUnique({
+          where: {
+            id: transactionId,
           },
-        },
-      },
-    });
+          include: {
+            userWallet: {
+              include: {
+                user: true,
+              },
+            },
+          },
+        });
 
-    if (!transaction) {
-      throw new Error("Wallet transaction not found");
-    }
+        if (!transaction) {
+          throw new Error("Wallet transaction not found");
+        }
 
-    if (transaction.description !== "Recharge successful") {
-      throw new Error("Invoice is available only for wallet recharge");
-    }
+        if (transaction.description !== "Recharge successful") {
+          throw new Error("Invoice is available only for wallet recharge");
+        }
 
-const userId = transaction.userWallet?.user?.id;
+        const userId = transaction.userWallet?.user?.id;
 
-const payment = await prisma.payment.findFirst({
-  where: {
-    rechargePackId: transaction.rechargePackId,
-    status: "SUCCESS",
-    userId: userId,
-  },
-  orderBy: {
-    createdAt: "desc",
-  },
-});
+        const payment = await prisma.payment.findFirst({
+          where: {
+            rechargePackId: transaction.rechargePackId,
+            status: "SUCCESS",
+            userId: userId,
+          },
+          orderBy: {
+            createdAt: "desc",
+          },
+        });
 
-    if (!payment) {
-      throw new Error("Payment not found");
-    }
+        if (!payment) {
+          throw new Error("Payment not found");
+        }
 
-    const amount = Number(payment.amount || 0);
-    const gstRate = Number(payment.gstRate || 18);
+        const amount = Number(payment.amount || 0);
+        const gstRate = Number(payment.gstRate || 18);
 
-    const taxableAmount =
-      amount / (1 + gstRate / 100);
+        const taxableAmount = amount / (1 + gstRate / 100);
 
-    const totalTax =
-      amount - taxableAmount;
+        const totalTax = amount - taxableAmount;
 
-    return {
-      id: transaction.id,
+        return {
+          id: transaction.id,
 
-      invoiceNo:
-        payment.invoiceNo ||
-        `INV-${transaction.id.slice(0, 8)}`,
+          invoiceNo: payment.invoiceNo || `INV-${transaction.id.slice(0, 8)}`,
 
-      transactionId:
-        payment.transactionId ||
-        transaction.id,
+          transactionId: payment.transactionId || transaction.id,
 
-      razorpayOrderId:
-        payment.razorpayOrderId || null,
+          razorpayOrderId: payment.razorpayOrderId || null,
 
-      razorpayPaymentId:
-        payment.razorpayPaymentId || null,
+          razorpayPaymentId: payment.razorpayPaymentId || null,
 
-      amount: taxableAmount,
+          amount: taxableAmount,
 
-      discount: 0,
+          discount: 0,
 
-      taxableAmount,
+          taxableAmount,
 
-      sgst: 0,
-      cgst: 0,
-      igst: totalTax,
+          sgst: 0,
+          cgst: 0,
+          igst: totalTax,
 
-      sgstRate: 0,
-      cgstRate: 0,
-      igstRate: gstRate,
+          sgstRate: 0,
+          cgstRate: 0,
+          igstRate: gstRate,
 
-      gstRate,
+          gstRate,
 
-      totalTax,
+          totalTax,
 
-      totalAmount: amount,
+          totalAmount: amount,
 
-      amountReceived: amount,
+          amountReceived: amount,
 
-      amountInWords:
-        payment.amountInWords || null,
+          amountInWords: payment.amountInWords || null,
 
-      userName:
-        transaction.userWallet?.user?.name || "-",
+          userName: transaction.userWallet?.user?.name || "-",
 
-   city:
-  payment.city || "-",
+          city: payment.city || "-",
 
-state:
-  payment.state || "-",
+          state: payment.state || "-",
 
-pincode:
-  "-", 
+          pincode: "-",
 
-      country:
-        transaction.userWallet?.user?.country || "India",
+          country: transaction.userWallet?.user?.country || "India",
+          placeOfSupply: payment.state || "-",
 
-      placeOfSupply:
-        transaction.userWallet?.user?.state || "-",
+          supplierGSTIN: payment.supplierGSTIN || "07ABBFM1961C1ZN",
 
-      supplierGSTIN:
-        payment.supplierGSTIN || "07ABBFM1961C1ZN",
+          supplierAddress:
+            payment.supplierAddress ||
+            "2ND FLOOR, 1511/2B, Kotla Mubarakpur, Bhishma Pitamah Marg, Wazir Nagar, New Delhi, South East Delhi, Delhi, 110003",
 
-      supplierAddress:
-        payment.supplierAddress || "2ND FLOOR, 1511/2B, Kotla Mubarakpur, Bhishma Pitamah Marg, Wazir Nagar, New Delhi, South East Delhi, Delhi, 110003",
+          website: payment.website || "www.dhwaniastro.com",
 
-      website:
-        payment.website || "www.dhwaniastro.com",
+          email: payment.email || "support@dhwaniastro.com",
 
-      email:
-        payment.email || "support@dhwaniastro.com",
+          recipientGSTIN: payment.recipientGSTIN || "-",
 
-      recipientGSTIN:
-        payment.recipientGSTIN || "-",
+          transactionHistoryUrl: payment.transactionHistoryUrl || "-",
 
-      transactionHistoryUrl:
-        payment.transactionHistoryUrl || "-",
+          hsnSac: payment.hsnSac || "999799",
 
-      hsnSac:
-        payment.hsnSac || "999799",
+          reverseCharge: payment.reverseCharge || false,
 
-      reverseCharge:
-        payment.reverseCharge || false,
+          panNumber: payment.panNumber || "ABBFM1961C",
 
-      panNumber:
-        payment.panNumber || "-",
+          createdAt: transaction.createdAt,
+        };
+      } catch (error) {
+        console.error("getPaymentInvoice error:", error);
 
-      createdAt:
-        transaction.createdAt,
-    };
-  } catch (error) {
-    console.error("getPaymentInvoice error:", error);
-
-    throw new Error(
-      error.message || "Failed to fetch payment invoice"
-    );
-  }
-},
+        throw new Error(error.message || "Failed to fetch payment invoice");
+      }
+    },
   },
   //----------------start code for mutation ----------------------------
   Mutation: {
@@ -4212,10 +4185,9 @@ pincode:
     //     }
 
     //     console.log("xxxxxxxxxxxxxxxxxxxxxxxxx", uploadDir );
-        
+
     //     const uploadPath = path.join(uploadDir, newFileName);
     //     console.log("yyyyyyyyyyyyyyyyyyyyyyy", uploadPath);
-        
 
     //     // Save file asynchronously
     //     await new Promise((resolve, reject) => {
@@ -4328,321 +4300,282 @@ pincode:
     //     };
     //   }
     // },
-    
-uploadCallRecording: async (
-  _,
-  { recording, roomId, astroId, astroName, userId, duration, callType },
-  context,
-) => {
-  try {
-    // --------------------------------
-    // AUTHENTICATION
-    // --------------------------------
 
-    if (!context.user) {
-      throw new Error("Unauthorized - Please login to upload recordings");
-    }
+    uploadCallRecording: async (
+      _,
+      { recording, roomId, astroId, astroName, userId, duration, callType },
+      context,
+    ) => {
+      try {
+        // --------------------------------
+        // AUTHENTICATION
+        // --------------------------------
 
-    const { createReadStream, filename, mimetype } = await recording;
+        if (!context.user) {
+          throw new Error("Unauthorized - Please login to upload recordings");
+        }
 
-    // --------------------------------
-    // VALIDATE FILE TYPE
-    // --------------------------------
+        const { createReadStream, filename, mimetype } = await recording;
 
-    const allowedMimeTypes = [
-      "audio/webm",
-      "audio/webm;codecs=opus",
-      "audio/ogg",
-      "audio/mpeg",
-      "audio/mp4",
-      "audio/wav",
-    ];
+        // --------------------------------
+        // VALIDATE FILE TYPE
+        // --------------------------------
 
-    const isValidMimeType =
-      allowedMimeTypes.some((type) => mimetype.includes(type)) ||
-      mimetype.startsWith("audio/");
+        const allowedMimeTypes = [
+          "audio/webm",
+          "audio/webm;codecs=opus",
+          "audio/ogg",
+          "audio/mpeg",
+          "audio/mp4",
+          "audio/wav",
+        ];
 
-    if (!isValidMimeType) {
-      throw new Error("Only audio files are allowed for call recordings");
-    }
+        const isValidMimeType =
+          allowedMimeTypes.some((type) => mimetype.includes(type)) ||
+          mimetype.startsWith("audio/");
 
-    // --------------------------------
-    // GENERATE UNIQUE FILE NAME
-    // --------------------------------
+        if (!isValidMimeType) {
+          throw new Error("Only audio files are allowed for call recordings");
+        }
 
-    const ext = filename?.split(".").pop() || "webm";
+        // --------------------------------
+        // GENERATE UNIQUE FILE NAME
+        // --------------------------------
 
-    const timestamp = new Date()
-      .toISOString()
-      .replace(/[:.]/g, "-");
+        const ext = filename?.split(".").pop() || "webm";
 
-    const newFileName = `call-${roomId}-${timestamp}.${ext}`;
+        const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
 
-    // --------------------------------
-    // SHARED DOCKER DIRECTORY
-    // --------------------------------
-    //
-    // Docker Compose:
-    //
-    // /var/www/chat-uploads:/shared/chat-uploads
-    //
-    // Container path:
-    // /shared/chat-uploads
-    //
-    // Server path:
-    // /var/www/chat-uploads
-    //
-    // --------------------------------
+        const newFileName = `call-${roomId}-${timestamp}.${ext}`;
 
-    const uploadDir = path.join(
-      "/shared/chat-uploads",
-      "call-recordings",
-    );
+        // --------------------------------
+        // SHARED DOCKER DIRECTORY
+        // --------------------------------
+        //
+        // Docker Compose:
+        //
+        // /var/www/chat-uploads:/shared/chat-uploads
+        //
+        // Container path:
+        // /shared/chat-uploads
+        //
+        // Server path:
+        // /var/www/chat-uploads
+        //
+        // --------------------------------
 
-    // Create directory if it doesn't exist
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, {
-        recursive: true,
-        mode: 0o750,
-      });
-    }
+        const uploadDir = path.join("/shared/chat-uploads", "call-recordings");
 
-    console.log("Recording upload directory:", uploadDir);
+        // Create directory if it doesn't exist
+        if (!fs.existsSync(uploadDir)) {
+          fs.mkdirSync(uploadDir, {
+            recursive: true,
+            mode: 0o750,
+          });
+        }
 
-    // --------------------------------
-    // FINAL FILE PATH
-    // --------------------------------
+        console.log("Recording upload directory:", uploadDir);
 
-    const uploadPath = path.join(
-      uploadDir,
-      newFileName,
-    );
+        // --------------------------------
+        // FINAL FILE PATH
+        // --------------------------------
 
-    console.log("Recording upload path:", uploadPath);
+        const uploadPath = path.join(uploadDir, newFileName);
 
-    // --------------------------------
-    // SAVE RECORDING
-    // --------------------------------
+        console.log("Recording upload path:", uploadPath);
 
-    await new Promise((resolve, reject) => {
-      const stream = createReadStream();
+        // --------------------------------
+        // SAVE RECORDING
+        // --------------------------------
 
-      const out = fs.createWriteStream(uploadPath, {
-        mode: 0o640,
-      });
+        await new Promise((resolve, reject) => {
+          const stream = createReadStream();
 
-      stream.pipe(out);
+          const out = fs.createWriteStream(uploadPath, {
+            mode: 0o640,
+          });
 
-      out.on("finish", resolve);
+          stream.pipe(out);
 
-      out.on("error", reject);
+          out.on("finish", resolve);
 
-      stream.on("error", reject);
-    });
+          out.on("error", reject);
 
-    // --------------------------------
-    // VERIFY FILE
-    // --------------------------------
+          stream.on("error", reject);
+        });
 
-    if (!fs.existsSync(uploadPath)) {
-      throw new Error("Recording file was not created");
-    }
+        // --------------------------------
+        // VERIFY FILE
+        // --------------------------------
 
-    const stats = fs.statSync(uploadPath);
+        if (!fs.existsSync(uploadPath)) {
+          throw new Error("Recording file was not created");
+        }
 
-    const fileSize = stats.size;
+        const stats = fs.statSync(uploadPath);
 
-    console.log("Recording saved successfully");
-    console.log("Container path:", uploadPath);
-    console.log("File size:", fileSize);
+        const fileSize = stats.size;
 
-    // --------------------------------
-    // FILE URL
-    // --------------------------------
+        console.log("Recording saved successfully");
+        console.log("Container path:", uploadPath);
+        console.log("File size:", fileSize);
 
-    const fileToken = Buffer.from(
-      `${roomId}:${Date.now()}`,
-    ).toString("base64");
+        // --------------------------------
+        // FILE URL
+        // --------------------------------
 
-    const fileUrl =
-      `https://dhwaniastro.com/v2/uploads/call-recordings/${newFileName}?token=${fileToken}`;
+        const fileToken = Buffer.from(`${roomId}:${Date.now()}`).toString(
+          "base64",
+        );
 
-    // --------------------------------
-    // FIND SESSION
-    // --------------------------------
+        const fileUrl = `https://dhwaniastro.com/v2/uploads/call-recordings/${newFileName}?token=${fileToken}`;
 
-    let sessionId = null;
+        // --------------------------------
+        // FIND SESSION
+        // --------------------------------
 
-    if (roomId) {
-      const session = await prisma.session.findFirst({
-        where: {
-          roomId: roomId,
-        },
-        select: {
-          id: true,
-        },
-      });
+        let sessionId = null;
 
-      if (session) {
-        sessionId = session.id;
-      }
-    }
+        if (roomId) {
+          const session = await prisma.session.findFirst({
+            where: {
+              roomId: roomId,
+            },
+            select: {
+              id: true,
+            },
+          });
 
-    // --------------------------------
-    // SAVE RECORDING IN DATABASE
-    // --------------------------------
+          if (session) {
+            sessionId = session.id;
+          }
+        }
 
-    const recordingData =
-      await prisma.callRecording.create({
-        data: {
-          roomId: roomId,
+        // --------------------------------
+        // SAVE RECORDING IN DATABASE
+        // --------------------------------
 
-          sessionId: sessionId,
+        const recordingData = await prisma.callRecording.create({
+          data: {
+            roomId: roomId,
 
-          userId:
-            userId || context.user.id,
+            sessionId: sessionId,
 
-          astrologerId: astroId,
+            userId: userId || context.user.id,
 
-          astrologerName:
-            astroName || "",
+            astrologerId: astroId,
 
-          fileName: newFileName,
+            astrologerName: astroName || "",
+
+            fileName: newFileName,
+
+            fileUrl: fileUrl,
+
+            // IMPORTANT:
+            // Store SERVER-MOUNTED PATH
+            filePath: `/var/www/chat-uploads/call-recordings/${newFileName}`,
+
+            fileSize: fileSize,
+
+            duration: parseInt(duration) || 0,
+
+            callType: callType || "audio",
+
+            timestamp: new Date().toISOString(),
+
+            status: "active",
+
+            isAdminOnly: true,
+
+            uploadedBy: context.user.id || context.user.email || "unknown",
+
+            uploadedAt: new Date(),
+
+            metadata: {
+              userAgent: context.user?.userAgent || null,
+
+              ipAddress: context.user?.ipAddress || null,
+
+              originalFilename: filename,
+
+              mimeType: mimetype,
+            },
+          },
+
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                mobile: true,
+              },
+            },
+
+            astrologer: {
+              select: {
+                id: true,
+                name: true,
+                displayName: true,
+              },
+            },
+
+            session: {
+              select: {
+                id: true,
+                status: true,
+                type: true,
+              },
+            },
+          },
+        });
+
+        // --------------------------------
+        // RESPONSE
+        // --------------------------------
+
+        return {
+          success: true,
+
+          message: "Call recording uploaded successfully (Admin only access)",
+
+          recording: {
+            id: recordingData.id,
+
+            roomId: recordingData.roomId,
+
+            astroId: recordingData.astrologerId,
+
+            astroName: recordingData.astrologerName,
+
+            userId: recordingData.userId,
+
+            duration: recordingData.duration,
+
+            callType: recordingData.callType,
+
+            recordingUrl: recordingData.fileUrl,
+
+            createdAt: recordingData.createdAt.toISOString(),
+
+            updatedAt: recordingData.updatedAt.toISOString(),
+          },
 
           fileUrl: fileUrl,
+        };
+      } catch (error) {
+        console.error("uploadCallRecording error:", error);
 
-          // IMPORTANT:
-          // Store SERVER-MOUNTED PATH
-          filePath: `/var/www/chat-uploads/call-recordings/${newFileName}`,
+        return {
+          success: false,
 
-          fileSize: fileSize,
+          message: error.message || "Failed to upload call recording",
 
-          duration:
-            parseInt(duration) || 0,
+          recording: null,
 
-          callType:
-            callType || "audio",
-
-          timestamp:
-            new Date().toISOString(),
-
-          status: "active",
-
-          isAdminOnly: true,
-
-          uploadedBy:
-            context.user.id ||
-            context.user.email ||
-            "unknown",
-
-          uploadedAt: new Date(),
-
-          metadata: {
-            userAgent:
-              context.user?.userAgent || null,
-
-            ipAddress:
-              context.user?.ipAddress || null,
-
-            originalFilename:
-              filename,
-
-            mimeType:
-              mimetype,
-          },
-        },
-
-        include: {
-          user: {
-            select: {
-              id: true,
-              name: true,
-              mobile: true,
-            },
-          },
-
-          astrologer: {
-            select: {
-              id: true,
-              name: true,
-              displayName: true,
-            },
-          },
-
-          session: {
-            select: {
-              id: true,
-              status: true,
-              type: true,
-            },
-          },
-        },
-      });
-
-    // --------------------------------
-    // RESPONSE
-    // --------------------------------
-
-    return {
-      success: true,
-
-      message:
-        "Call recording uploaded successfully (Admin only access)",
-
-      recording: {
-        id: recordingData.id,
-
-        roomId:
-          recordingData.roomId,
-
-        astroId:
-          recordingData.astrologerId,
-
-        astroName:
-          recordingData.astrologerName,
-
-        userId:
-          recordingData.userId,
-
-        duration:
-          recordingData.duration,
-
-        callType:
-          recordingData.callType,
-
-        recordingUrl:
-          recordingData.fileUrl,
-
-        createdAt:
-          recordingData.createdAt.toISOString(),
-
-        updatedAt:
-          recordingData.updatedAt.toISOString(),
-      },
-
-      fileUrl: fileUrl,
-    };
-  } catch (error) {
-    console.error(
-      "uploadCallRecording error:",
-      error,
-    );
-
-    return {
-      success: false,
-
-      message:
-        error.message ||
-        "Failed to upload call recording",
-
-      recording: null,
-
-      fileUrl: null,
-    };
-  }
-},
-
-
+          fileUrl: null,
+        };
+      }
+    },
 
     verifyServiceCoupon: async (_, { input }, context) => {
       try {
