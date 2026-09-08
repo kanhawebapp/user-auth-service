@@ -552,42 +552,15 @@ module.exports = {
 
       const startedAt = Date.now();
 
-      console.log("\n======================================================");
-      console.log(`🚀 ${requestId} getAstrologerListForUser START`);
-      console.log("======================================================");
-
       try {
-        // =====================================================
-        // STEP 1: AUTH
-        // =====================================================
-        console.log(`\n[${requestId}] STEP 1: Checking authentication`);
-
         if (!context?.user) {
           console.error(`[${requestId}] ❌ Unauthorized`);
           throw new Error("Unauthorized");
         }
-
         const userId = context.user.id;
-
-        console.log(`[${requestId}] ✅ User authenticated`);
-        console.log(`[${requestId}] userId:`, userId);
-
-        // =====================================================
-        // STEP 2: INPUT
-        // =====================================================
-        console.log(`\n[${requestId}] STEP 2: Processing searchInput`);
-
-        console.log(
-          `[${requestId}] searchInput:`,
-          JSON.stringify(searchInput || {}, null, 2),
-        );
-
         const { query, sortField, sortOrder, category, type } =
           searchInput || {};
 
-        // =====================================================
-        // STEP 3: PAGINATION
-        // =====================================================
         const pageNumber = Math.max(1, Number(searchInput?.page) || 1);
 
         const limitNumber = Math.min(
@@ -596,19 +569,6 @@ module.exports = {
         );
 
         const skip = (pageNumber - 1) * limitNumber;
-
-        console.log(`\n[${requestId}] STEP 3: Pagination`);
-
-        console.log(`[${requestId}] Pagination:`, {
-          pageNumber,
-          limitNumber,
-          skip,
-        });
-
-        // =====================================================
-        // STEP 4: ORDER BY
-        // =====================================================
-        console.log(`\n[${requestId}] STEP 4: Building orderBy`);
 
         let orderBy = {
           createdAt: "desc",
@@ -629,22 +589,7 @@ module.exports = {
             };
           }
         }
-
-        console.log(
-          `[${requestId}] orderBy:`,
-          JSON.stringify(orderBy, null, 2),
-        );
-
-        // =====================================================
-        // STEP 5: WHERE
-        // =====================================================
-        console.log(`\n[${requestId}] STEP 5: Building WHERE`);
-
         const AND = [];
-
-        // -----------------------------------------------------
-        // SEARCH QUERY
-        // -----------------------------------------------------
         if (query && String(query).trim()) {
           const searchQuery = String(query).trim();
 
@@ -675,9 +620,6 @@ module.exports = {
           });
         }
 
-        // -----------------------------------------------------
-        // CATEGORY
-        // -----------------------------------------------------
         if (category && String(category).toLowerCase() !== "all") {
           AND.push({
             OR: [
@@ -702,36 +644,11 @@ module.exports = {
               }
             : {};
 
-        console.log(
-          `[${requestId}] FINAL WHERE:`,
-          JSON.stringify(where, null, 2),
-        );
-
-        // =====================================================
-        // STEP 6: COUNT
-        // =====================================================
-        console.log(`\n[${requestId}] STEP 6: BEFORE astrologer.count()`);
-
         const countStart = Date.now();
 
         const totalCount = await prisma.astrologer.count({
           where,
         });
-
-        console.log(`[${requestId}] ✅ astrologer.count() SUCCESS`);
-
-        console.log(`[${requestId}] totalCount:`, totalCount);
-
-        console.log(
-          `[${requestId}] count duration:`,
-          Date.now() - countStart,
-          "ms",
-        );
-
-        // =====================================================
-        // STEP 7: ASTROLOGER FIND MANY
-        // =====================================================
-        console.log(`\n[${requestId}] STEP 7: BEFORE astrologer.findMany()`);
 
         const findStart = Date.now();
 
@@ -759,68 +676,17 @@ module.exports = {
           },
         });
 
-        console.log(`[${requestId}] ✅ astrologer.findMany() SUCCESS`);
-
-        console.log(`[${requestId}] Astrologers count:`, astrologers.length);
-
-        console.log(
-          `[${requestId}] findMany duration:`,
-          Date.now() - findStart,
-          "ms",
-        );
-
-        // =====================================================
-        // STEP 8: ASTROLOGER IDS
-        // =====================================================
-        console.log(`\n[${requestId}] STEP 8: Building astrologerIds`);
-
         const astrologerIds = astrologers.map((astro) => astro.id);
-
-        console.log(
-          `[${requestId}] astrologerIds count:`,
-          astrologerIds.length,
-        );
-
-        // =====================================================
-        // STEP 9: PRICING CONFIG
-        // =====================================================
-        console.log(
-          `\n[${requestId}] STEP 9: BEFORE pricingConfig.findFirst()`,
-        );
-
         const pricingConfig = await prisma.pricingConfig.findFirst();
-
-        console.log(`[${requestId}] ✅ pricingConfig.findFirst() SUCCESS`);
-
-        console.log(`[${requestId}] pricingConfig exists:`, !!pricingConfig);
-
-        // =====================================================
-        // STEP 10: USER OFFER USAGE
-        // =====================================================
-        console.log(
-          `\n[${requestId}] STEP 10: BEFORE userOfferUsage.findUnique()`,
-        );
-
         const usage = await prisma.userOfferUsage.findUnique({
           where: {
             userId,
           },
         });
 
-        console.log(`[${requestId}] ✅ userOfferUsage.findUnique() SUCCESS`);
-
-        console.log(`[${requestId}] usage:`, usage);
-
-        // =====================================================
-        // STEP 11: ASTROLOGER OFFERS
-        // =====================================================
         let activeOffers = [];
 
         if (astrologerIds.length > 0) {
-          console.log(
-            `\n[${requestId}] STEP 11: BEFORE astrologerOffer.findMany()`,
-          );
-
           const offerStart = Date.now();
 
           activeOffers = await prisma.astrologerOffer.findMany({
@@ -836,29 +702,11 @@ module.exports = {
               offer: true,
             },
           });
-
-          console.log(`[${requestId}] ✅ astrologerOffer.findMany() SUCCESS`);
-
-          console.log(
-            `[${requestId}] Active offers count:`,
-            activeOffers.length,
-          );
-
-          console.log(
-            `[${requestId}] Offer query duration:`,
-            Date.now() - offerStart,
-            "ms",
-          );
         } else {
           console.log(
             `[${requestId}] No astrologers found, skipping offer query`,
           );
         }
-
-        // =====================================================
-        // STEP 12: OFFER MAP
-        // =====================================================
-        console.log(`\n[${requestId}] STEP 12: Building offerMap`);
 
         const offerMap = new Map();
 
@@ -868,25 +716,7 @@ module.exports = {
           }
         }
 
-        console.log(`[${requestId}] offerMap size:`, offerMap.size);
-
-        // =====================================================
-        // STEP 13: MAP ASTROLOGERS
-        // =====================================================
-        console.log(`\n[${requestId}] STEP 13: Mapping astrologers`);
-
         const data = astrologers.map((astro, index) => {
-          console.log(
-            `[${requestId}] Mapping astrologer ${
-              index + 1
-            }/${astrologers.length}`,
-          );
-
-          console.log(`[${requestId}] Astrologer:`, {
-            id: astro.id,
-            name: astro.name,
-          });
-
           try {
             const specialOffer = offerMap.get(astro.id);
 
@@ -896,19 +726,11 @@ module.exports = {
 
                   let appliedOffer = null;
 
-                  // =================================================
-                  // 1. SPECIAL OFFER
-                  // =================================================
                   if (specialOffer) {
                     finalPrice = specialOffer.price;
 
                     appliedOffer = specialOffer.offerName;
-                  }
-
-                  // =================================================
-                  // 2. FIRST OFFER
-                  // =================================================
-                  else if (
+                  } else if (
                     pricingConfig?.isFirstOfferEnabled &&
                     !usage?.usedFirst
                   ) {
@@ -918,12 +740,7 @@ module.exports = {
                         : pricingConfig.firstCallPrice;
 
                     appliedOffer = "FIRST_TIME_OFFER";
-                  }
-
-                  // =================================================
-                  // 3. SECOND OFFER
-                  // =================================================
-                  else if (
+                  } else if (
                     pricingConfig?.isSecondOfferEnabled &&
                     usage?.usedFirst &&
                     !usage?.usedSecond
@@ -1021,11 +838,6 @@ module.exports = {
           }
         });
 
-        // =====================================================
-        // STEP 14: RESPONSE
-        // =====================================================
-        console.log(`\n[${requestId}] STEP 14: Preparing response`);
-
         const totalPages = Math.ceil(totalCount / limitNumber);
 
         const response = {
@@ -1038,33 +850,8 @@ module.exports = {
           totalPages,
         };
 
-        console.log(`[${requestId}] Response:`, {
-          dataCount: data.length,
-
-          totalCount,
-
-          currentPage: pageNumber,
-
-          totalPages,
-        });
-
-        console.log("\n======================================================");
-
-        console.log(`🎉 ${requestId} getAstrologerListForUser SUCCESS`);
-
-        console.log(
-          `[${requestId}] Total duration:`,
-          Date.now() - startedAt,
-          "ms",
-        );
-
-        console.log("======================================================");
-
         return response;
       } catch (error) {
-        // =====================================================
-        // ERROR
-        // =====================================================
         console.error(
           "\n======================================================",
         );
@@ -2219,12 +2006,6 @@ module.exports = {
               }
             : {}),
         };
-
-        console.log("getUserSessions where:", where);
-
-        // -----------------------------------
-        // FETCH SESSIONS + COUNT
-        // -----------------------------------
 
         const [sessions, totalCount] = await Promise.all([
           prisma.session.findMany({
@@ -3598,13 +3379,7 @@ module.exports = {
             : Number(pricingConfig.firstChatPrice);
 
         appliedOffer = "FIRST_TIME_OFFER";
-        console.log("FIRST_TIME_OFFER price --------", pricePerMin);
-      }
-
-      // ----------------------------------------------------
-      // SECOND TIME OFFER
-      // ----------------------------------------------------
-      else if (
+      } else if (
         pricingConfig?.isSecondOfferEnabled &&
         !userOfferUsage.secondOfferUsedAt
       ) {
@@ -3613,75 +3388,28 @@ module.exports = {
             ? Number(pricingConfig.secondCallPrice)
             : Number(pricingConfig.secondChatPrice);
 
-        console.log("SECOND price --------", pricePerMin);
-
         appliedOffer = "SECOND_TIME_OFFER";
-      }
-
-      // ----------------------------------------------------
-      // GLOBAL OFFER
-      // ----------------------------------------------------
-      else if (pricingConfig?.isGlobalOfferEnabled) {
+      } else if (pricingConfig?.isGlobalOfferEnabled) {
         pricePerMin =
           requestType === "CALL"
             ? Number(pricingConfig.globalCallPrice)
             : Number(pricingConfig.globalChatPrice);
 
-        console.log("GLOBAL price --------", pricePerMin);
-
         appliedOffer = "GLOBAL_OFFER";
-      }
-
-      // ----------------------------------------------------
-      // BIRTHDAY / DIWALI / SPECIAL OFFER
-      // ----------------------------------------------------
-      else if (
+      } else if (
         activeOffer?.offer &&
         activeOffer.offer.isActive &&
         Number(activeOffer.offer.price) >= 0
       ) {
         pricePerMin = Number(activeOffer.offer.price);
-        console.log("SPECIAL price --------", pricePerMin);
         appliedOffer =
           activeOffer.offer.offerName || "ASTROLOGER_SPECIAL_OFFER";
-      }
-
-      // ----------------------------------------------------
-      // ASTROLOGER OFFER PRICE
-      // ----------------------------------------------------
-      // else if (pricing.offerPrice && Number(pricing.offerPrice) >= 0) {
-      //   pricePerMin = Number(pricing.offerPrice);
-      //    console.log("OFFER price --------",pricePerMin);
-
-      //   appliedOffer = "ASTROLOGER_OFFER_PRICE";
-      // }
-
-      // ----------------------------------------------------
-      // NORMAL PRICE
-      // ----------------------------------------------------
-      else {
+      } else {
         pricePerMin = Number(pricing.price);
-        console.log("NORMAL price --------", pricePerMin);
 
         appliedOffer = "NORMAL";
       }
 
-      // ----------------------------------------------------
-      // VALIDATION
-      // ----------------------------------------------------
-
-      // if (!pricePerMin || Number(pricePerMin) <= 0) {
-      //   throw new Error("Invalid astrologer pricing");
-      // }
-
-      // console.log("Final Price:", pricePerMin);
-      // console.log("Applied Offer:", appliedOffer);
-
-      // if (pricePerMin <= 0) {
-      //   throw new Error("Invalid astrologer pricing");
-      // }
-      console.log("Price per minute:", pricePerMin);
-      // Calculate Chat/Call Time
       let chatTime = 0;
       if (pricePerMin == 0) {
         chatTime = 3;
@@ -4136,190 +3864,17 @@ module.exports = {
       }
     },
 
-    // In your resolvers file
-
-    // uploadCallRecording: async (
-    //   _,
-    //   { recording, roomId, astroId, astroName, userId, duration, callType },
-    //   context,
-    // ) => {
-    //   try {
-    //     // Check authentication
-    //     if (!context.user) {
-    //       throw new Error("Unauthorized - Please login to upload recordings");
-    //     }
-    //     const { createReadStream, filename, mimetype } = await recording;
-
-    //     // Validate file type - allow audio files only
-    //     const allowedMimeTypes = [
-    //       "audio/webm",
-    //       "audio/webm;codecs=opus",
-    //       "audio/ogg",
-    //       "audio/mpeg",
-    //       "audio/mp4",
-    //       "audio/wav",
-    //     ];
-
-    //     if (
-    //       !allowedMimeTypes.some(
-    //         (type) => mimetype.includes(type) || mimetype.startsWith("audio/"),
-    //       )
-    //     ) {
-    //       throw new Error("Only audio files are allowed for call recordings");
-    //     }
-
-    //     // Generate unique filename
-    //     const ext = filename.split(".").pop() || "webm";
-    //     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-    //     const newFileName = `call-${roomId}-${timestamp}.${ext}`;
-
-    //     // Create upload directory with restricted permissions
-    //     const uploadDir = path.join(
-    //       __dirname,
-    //       "..",
-    //       "uploads",
-    //       "call-recordings",
-    //     );
-    //     if (!fs.existsSync(uploadDir)) {
-    //       fs.mkdirSync(uploadDir, { recursive: true, mode: 0o750 });
-    //     }
-
-    //     console.log("xxxxxxxxxxxxxxxxxxxxxxxxx", uploadDir );
-
-    //     const uploadPath = path.join(uploadDir, newFileName);
-    //     console.log("yyyyyyyyyyyyyyyyyyyyyyy", uploadPath);
-
-    //     // Save file asynchronously
-    //     await new Promise((resolve, reject) => {
-    //       const stream = createReadStream();
-    //       const out = fs.createWriteStream(uploadPath, { mode: 0o640 });
-
-    //       stream.pipe(out);
-    //       out.on("finish", resolve);
-    //       out.on("error", reject);
-    //       stream.on("error", reject);
-    //     });
-
-    //     // Get file size
-    //     const stats = fs.statSync(uploadPath);
-    //     const fileSize = stats.size;
-
-    //     // Generate secure file URL
-    //     const fileToken = Buffer.from(`${roomId}:${Date.now()}`).toString(
-    //       "base64",
-    //     );
-    //     const fileUrl = `https://dhwaniastro.com/v2/uploads/call-recordings/${newFileName}?token=${fileToken}`;
-
-    //     // Find session by roomId (optional)
-    //     let sessionId = null;
-    //     if (roomId) {
-    //       const session = await prisma.session.findFirst({
-    //         where: { roomId: roomId },
-    //         select: { id: true },
-    //       });
-    //       if (session) {
-    //         sessionId = session.id;
-    //       }
-    //     }
-
-    //     // Save to database using Prisma - MATCHES YOUR SCHEMA
-    //     const recordingData = await prisma.callRecording.create({
-    //       data: {
-    //         roomId: roomId,
-    //         sessionId: sessionId, // This is a field in your model
-    //         userId: userId || context.user.id,
-    //         astrologerId: astroId,
-    //         astrologerName: astroName || "",
-    //         fileName: newFileName,
-    //         fileUrl: fileUrl,
-    //         filePath: uploadPath,
-    //         fileSize: fileSize,
-    //         duration: parseInt(duration) || 0,
-    //         callType: callType || "audio",
-    //         timestamp: new Date().toISOString(),
-    //         status: "active",
-    //         isAdminOnly: true,
-    //         uploadedBy: context.user.id || context.user.email || "unknown",
-    //         uploadedAt: new Date(),
-    //         metadata: {
-    //           userAgent: context.user?.userAgent || null,
-    //           ipAddress: context.user?.ipAddress || null,
-    //           originalFilename: filename,
-    //           mimeType: mimetype,
-    //         },
-    //       },
-    //       include: {
-    //         user: {
-    //           select: {
-    //             id: true,
-    //             name: true,
-    //             mobile: true,
-    //           },
-    //         },
-    //         astrologer: {
-    //           select: {
-    //             id: true,
-    //             name: true,
-    //             displayName: true,
-    //           },
-    //         },
-    //         session: {
-    //           select: {
-    //             id: true,
-    //             status: true,
-    //             type: true,
-    //           },
-    //         },
-    //       },
-    //     });
-
-    //     return {
-    //       success: true,
-    //       message: "Call recording uploaded successfully (Admin only access)",
-    //       recording: {
-    //         id: recordingData.id,
-    //         roomId: recordingData.roomId,
-    //         astroId: recordingData.astrologerId,
-    //         astroName: recordingData.astrologerName,
-    //         userId: recordingData.userId,
-    //         duration: recordingData.duration,
-    //         callType: recordingData.callType,
-    //         recordingUrl: recordingData.fileUrl,
-    //         createdAt: recordingData.createdAt.toISOString(),
-    //         updatedAt: recordingData.updatedAt.toISOString(),
-    //       },
-    //       fileUrl: fileUrl,
-    //     };
-    //   } catch (error) {
-    //     console.error("uploadCallRecording error:", error);
-    //     return {
-    //       success: false,
-    //       message: error.message || "Failed to upload call recording",
-    //       recording: null,
-    //       fileUrl: null,
-    //     };
-    //   }
-    // },
-
     uploadCallRecording: async (
       _,
       { recording, roomId, astroId, astroName, userId, duration, callType },
       context,
     ) => {
       try {
-        // --------------------------------
-        // AUTHENTICATION
-        // --------------------------------
-         console.log("comming in uploadCallRecording");
         if (!context.user) {
           throw new Error("Unauthorized - Please login to upload recordings");
         }
 
         const { createReadStream, filename, mimetype } = await recording;
-
-        // --------------------------------
-        // VALIDATE FILE TYPE
-        // --------------------------------
 
         const allowedMimeTypes = [
           "audio/webm",
@@ -4338,31 +3893,11 @@ module.exports = {
           throw new Error("Only audio files are allowed for call recordings");
         }
 
-        // --------------------------------
-        // GENERATE UNIQUE FILE NAME
-        // --------------------------------
-
         const ext = filename?.split(".").pop() || "webm";
 
         const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
 
         const newFileName = `call-${roomId}-${timestamp}.${ext}`;
-
-        // --------------------------------
-        // SHARED DOCKER DIRECTORY
-        // --------------------------------
-        //
-        // Docker Compose:
-        //
-        // /var/www/chat-uploads:/shared/chat-uploads
-        //
-        // Container path:
-        // /shared/chat-uploads
-        //
-        // Server path:
-        // /var/www/chat-uploads
-        //
-        // --------------------------------
 
         const uploadDir = path.join("/shared/chat-uploads", "call-recordings");
 
@@ -4374,19 +3909,7 @@ module.exports = {
           });
         }
 
-        console.log("Recording upload directory:", uploadDir);
-
-        // --------------------------------
-        // FINAL FILE PATH
-        // --------------------------------
-
         const uploadPath = path.join(uploadDir, newFileName);
-
-        console.log("Recording upload path:", uploadPath);
-
-        // --------------------------------
-        // SAVE RECORDING
-        // --------------------------------
 
         await new Promise((resolve, reject) => {
           const stream = createReadStream();
@@ -4404,10 +3927,6 @@ module.exports = {
           stream.on("error", reject);
         });
 
-        // --------------------------------
-        // VERIFY FILE
-        // --------------------------------
-
         if (!fs.existsSync(uploadPath)) {
           throw new Error("Recording file was not created");
         }
@@ -4416,23 +3935,11 @@ module.exports = {
 
         const fileSize = stats.size;
 
-        console.log("Recording saved successfully");
-        console.log("Container path:", uploadPath);
-        console.log("File size:", fileSize);
-
-        // --------------------------------
-        // FILE URL
-        // --------------------------------
-
         const fileToken = Buffer.from(`${roomId}:${Date.now()}`).toString(
           "base64",
         );
 
         const fileUrl = `https://dhwaniastro.com/v2/uploads/call-recordings/${newFileName}?token=${fileToken}`;
-
-        // --------------------------------
-        // FIND SESSION
-        // --------------------------------
 
         let sessionId = null;
 
@@ -4450,10 +3957,6 @@ module.exports = {
             sessionId = session.id;
           }
         }
-
-        // --------------------------------
-        // SAVE RECORDING IN DATABASE
-        // --------------------------------
 
         const recordingData = await prisma.callRecording.create({
           data: {
@@ -5142,129 +4645,6 @@ module.exports = {
         throw new Error(error.message || "Failed to logout");
       }
     },
-    // sendGift: async (_, { input }, context) => {
-
-    //   try {
-    //     if (!context.user) {
-    //       throw new Error("Unauthorized");
-    //     }
-
-    //     const { astro_id, gift_id, giftname, giftprice, user_id } = input;
-
-    //     // -----------------------------
-    //     // Fetch wallets
-    //     // -----------------------------
-    //     const userWallet = await prisma.userWallet.findUnique({
-    //       where: {
-    //         userId: user_id,
-    //       },
-    //     });
-    //     if (!userWallet) {
-    //       throw new Error("User wallet not found");
-    //     }
-
-    //     if (Number(userWallet.balanceCoins) < Number(giftprice)) {
-    //       throw new Error("Insufficient wallet balance");
-    //     }
-
-    //     const astrologerWallet = await prisma.astrologerWallet.findUnique({
-    //       where: {
-    //         astrologerId: astro_id,
-    //       },
-    //     });
-    //     console.log("Astrologer Wallet:", astrologerWallet);
-
-    //     // if (!astrologerWallet) {
-    //     //   throw new Error("Astrologer wallet not found");
-    //     // }
-
-    //     // -----------------------------
-    //     // Transaction
-    //     // -----------------------------
-    //     const result = await prisma.$transaction(async (tx) => {
-    //       // Debit User Wallet
-    //       const updatedUserWallet = await tx.userWallet.update({
-    //         where: {
-    //           id: userWallet.id,
-    //         },
-    //         data: {
-    //           balanceCoins: {
-    //             decrement: Number(giftprice),
-    //           },
-    //         },
-    //       });
-
-    //       // Credit Astrologer Wallet
-    //       const updatedAstroWallet = await tx.astrologerWallet.update({
-    //         where: {
-    //           id: astrologerWallet.id,
-    //         },
-    //         data: {
-    //           balanceCoins: {
-    //             increment: Number(giftprice),
-    //           },
-    //         },
-    //       });
-
-    //       // Save Gift History
-    //       await tx.giftHistory.create({
-    //         data: {
-    //           userId: user_id,
-    //           astrologerId: astro_id,
-    //           giftId: gift_id,
-    //           giftName: giftname,
-    //           giftPrice: Number(giftprice),
-    //         },
-    //       });
-
-    //       // User Wallet Transaction
-    //       await tx.walletTransaction.create({
-    //         data: {
-    //           userWalletId: userWallet.id,
-
-    //           type: "DEBIT",
-
-    //           coins: Number(giftprice),
-    //           amount: Number(giftprice),
-
-    //           description: `Gift Sent - ${giftname}`,
-    //         },
-    //       });
-
-    //       // Astrologer Wallet Transaction
-    //       await tx.walletTransaction.create({
-    //         data: {
-    //           astrologerWalletId: astrologerWallet.id,
-
-    //           type: "CREDIT",
-
-    //           coins: Number(giftprice),
-    //           amount: Number(giftprice),
-
-    //           description: `Gift Received - ${giftname}`,
-    //         },
-    //       });
-
-    //       return {
-    //         updatedUserWallet,
-    //         updatedAstroWallet,
-    //       };
-    //     });
-
-    //     return {
-    //       success: true,
-    //       message: "Gift sent successfully",
-
-    //       userBalance: result.updatedUserWallet.balanceCoins,
-
-    //       astrologerBalance: result.updatedAstroWallet.balanceCoins,
-    //     };
-    //   } catch (error) {
-    //     console.error("sendGift error:", error);
-
-    //     throw new Error(error.message);
-    //   }
-    // },
 
     sendGift: async (_, { input }, context) => {
       try {
@@ -5284,9 +4664,6 @@ module.exports = {
           throw new Error("Invalid gift price");
         }
 
-        // --------------------------------------------------
-        // Fetch User Wallet
-        // --------------------------------------------------
         const userWallet = await prisma.userWallet.findUnique({
           where: {
             userId: user_id,
