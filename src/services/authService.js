@@ -146,17 +146,13 @@ const verifyOTPService = async (countryCode, mobile, otp, source) => {
       });
       isNewUser = true;
     }
-    console.log("========== OTP LOGIN ==========");
-    console.log("USER ID:", user.id);
-    console.log("USER MOBILE:", user.mobile);
-    console.log("IS NEW USER:", isNewUser);
+
     if (user.isDeleted) {
       throw new Error("Account deleted");
     }
 
     const hasName = !!user.name;
-    console.log("TOKEN USER:", user);
-    //  GENERATE TOKENS
+
     const accessToken = generateAccessToken(user);
     const refreshToken = generateRefreshToken(user);
 
