@@ -1395,6 +1395,12 @@ type ProfileImageUploadResponse {
   createdAt: String
 }
   #-------------END CALL RECORDING---
+  #--------SOFT DELETE ----------
+  type SoftDeleteUserResponse {
+  success: Boolean!
+  message: String!
+}
+  #----------END-----------
   type Query {
    getPaymentInvoice(transactionId: ID!): PaymentInvoice
     getAstrologerCategories: [AstrologerCategory!]!
@@ -1558,5 +1564,7 @@ type ProfileImageUploadResponse {
       uploadProfileImage(
     file: Upload!
   ): ProfileImageUploadResponse!
+
+  softDeleteUser: SoftDeleteUserResponse!
   }
 `;

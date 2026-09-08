@@ -5099,5 +5099,53 @@ module.exports = {
         throw new Error(error.message || "Failed to start live");
       }
     },
+
+ softDeleteUser: async (_, __, context) => {
+  try {
+    if (!context?.user) {
+      throw new Error("Unauthorized");
+    }
+
+    const userId = context.user.id;
+
+    const user = await prisma.user.findUnique({
+      where: {
+        id: userId,
+      },
+      select: {
+        id: true,
+        isDeleted: true,
+      },
+    });
+
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    if (user.isDeleted) {
+      throw new Error("Account deleted");
+    }
+
+    await prisma.user.update({
+      where: {
+        id: userId,
+      },
+      data: {
+        isDeleted: true,
+        refreshToken: null,
+      },
+    });
+
+    return {
+      success: true,
+      message: "Account deleted successfully",
+    };
+  } catch (error) {
+    console.error("softDeleteUser error:", error);
+
+    throw new Error(error.message || "Failed to delete account");
+  }
+},
+
   },
 };
