@@ -5132,6 +5132,7 @@ module.exports = {
       },
       data: {
         isDeleted: true,
+        isActive: false,
         refreshToken: null,
       },
     });

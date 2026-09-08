@@ -148,7 +148,7 @@ const verifyOTPService = async (countryCode, mobile, otp, source) => {
     }
 
     if (user.isDeleted) {
-      throw new Error("Account deleted");
+      throw new Error("Your account has been deleted. Please contact our support team.");
     }
 
     const hasName = !!user.name;
