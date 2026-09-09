@@ -157,7 +157,7 @@ model User {
   gender               Gender?
   birthDate            DateTime?
   birthTime            String?
-  birthPlace           String?
+   birthPlace           String?
   occupation           String?
   profileImage         String? 
   isActive             Boolean               @default(true)
@@ -622,7 +622,10 @@ model Faq {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
-
+enum BannerType {
+  DESKTOP
+  MOBILE
+}
 model Banner {
   id         String   @id @default(uuid())
   heading    String
@@ -635,6 +638,7 @@ model Banner {
   status     Boolean  @default(true)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+  bannerType BannerType @default(DESKTOP)
 }
 
 model RolePermission {
