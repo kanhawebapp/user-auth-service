@@ -745,7 +745,10 @@ type ProfileImageUploadResponse {
 
   #------------------ END GIFT SECTION ------------------
   #------------------ START BANNER SECTION --------------
-
+enum BannerType {
+  DESKTOP
+  MOBILE
+}
   type Banner {
     id: ID!
     heading: String
