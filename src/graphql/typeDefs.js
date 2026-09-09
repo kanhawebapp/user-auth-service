@@ -758,6 +758,7 @@ type ProfileImageUploadResponse {
     status: Boolean
     createdAt: String
     updatedAt: String
+    bannerType: BannerType
   }
 
   type BannerResponse {
