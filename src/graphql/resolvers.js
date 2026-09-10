@@ -496,6 +496,7 @@ module.exports = {
             id: astro.id,
             profilePic: astro.profilePic,
             name: astro.name,
+            displayName: astro.displayName,
             experience: astro.experience,
             rating: astro.rating,
             skills: astro.skills,
