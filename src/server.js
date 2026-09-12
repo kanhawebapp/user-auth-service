@@ -22,7 +22,7 @@ async function startServer() {
       origin: [
         "http://localhost:3000",
         "https://dhwaniastro.com",
-        "https://dhwani-astro-website-v2.vercel.app",
+        "https://dhwani-new-vercel.vercel.app",
       ],
       credentials: true,
     }),
