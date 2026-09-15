@@ -428,6 +428,7 @@ module.exports = {
         }
 
         const where = {
+          isDeleted: false,
           ...(query && {
             OR: [
               {
@@ -637,13 +638,15 @@ module.exports = {
             ],
           });
         }
+        const where = {
+          isDeleted: false,
 
-        const where =
-          AND.length > 0
+          ...(AND.length > 0
             ? {
                 AND,
               }
-            : {};
+            : {}),
+        };
 
         const countStart = Date.now();
 
@@ -3665,153 +3668,151 @@ module.exports = {
         throw new Error(error.message || "Failed to submit review");
       }
     },
-   
-uploadProfileImage: async (_, { file }, context) => {
-  try {
-    if (!context.user) {
-      throw new Error("Unauthorized");
-    }
 
-    const userId = context.user.id;
-
-    // ================= USER CHECK =================
-
-    const user = await prisma.user.findUnique({
-      where: {
-        id: userId,
-      },
-    });
-
-    if (!user) {
-      throw new Error("User not found");
-    }
-
-    // ================= FILE =================
-
-    const { createReadStream, filename, mimetype } = await file;
-
-    if (!mimetype || !mimetype.startsWith("image/")) {
-      throw new Error("Only image files are allowed");
-    }
-
-    // ================= FILE SIZE =================
-
-    const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2MB
-
-    // ================= ALLOWED EXTENSIONS =================
-
-    const ext = path.extname(filename).toLowerCase();
-
-    const allowedExtensions = [".jpg", ".jpeg", ".png", ".webp"];
-
-    if (!allowedExtensions.includes(ext)) {
-      throw new Error("Only JPG, JPEG, PNG and WEBP images are allowed");
-    }
-
-    // ================= UPLOAD DIRECTORY =================
-
-    // Production:
-    // /var/www/chat-uploads/profile
-
-    const uploadRoot =
-      process.env.UPLOAD_DIR || "/var/www/chat-uploads";
-
-    const uploadDir = path.join(uploadRoot, "profile");
-
-    fs.mkdirSync(uploadDir, {
-      recursive: true,
-    });
-
-    // ================= UNIQUE FILE NAME =================
-
-    const newFileName = `${Date.now()}-${Math.random()
-      .toString(36)
-      .substring(2, 8)}${ext}`;
-
-    const uploadPath = path.join(uploadDir, newFileName);
-
-    // ================= SAVE FILE =================
-
-    await new Promise((resolve, reject) => {
-      const stream = createReadStream();
-      const out = fs.createWriteStream(uploadPath);
-
-      let fileSize = 0;
-      let rejected = false;
-
-      stream.on("data", (chunk) => {
-        fileSize += chunk.length;
-
-        if (fileSize > MAX_FILE_SIZE && !rejected) {
-          rejected = true;
-
-          stream.destroy();
-          out.destroy();
-
-          if (fs.existsSync(uploadPath)) {
-            fs.unlinkSync(uploadPath);
-          }
-
-          reject(new Error("Profile image must be less than 2MB"));
+    uploadProfileImage: async (_, { file }, context) => {
+      try {
+        if (!context.user) {
+          throw new Error("Unauthorized");
         }
-      });
 
-      stream.on("error", (error) => {
-        if (!rejected) {
-          reject(error);
+        const userId = context.user.id;
+
+        // ================= USER CHECK =================
+
+        const user = await prisma.user.findUnique({
+          where: {
+            id: userId,
+          },
+        });
+
+        if (!user) {
+          throw new Error("User not found");
         }
-      });
 
-      out.on("error", (error) => {
-        if (!rejected) {
-          reject(error);
+        // ================= FILE =================
+
+        const { createReadStream, filename, mimetype } = await file;
+
+        if (!mimetype || !mimetype.startsWith("image/")) {
+          throw new Error("Only image files are allowed");
         }
-      });
 
-      out.on("finish", () => {
-        if (!rejected) {
-          resolve();
+        // ================= FILE SIZE =================
+
+        const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2MB
+
+        // ================= ALLOWED EXTENSIONS =================
+
+        const ext = path.extname(filename).toLowerCase();
+
+        const allowedExtensions = [".jpg", ".jpeg", ".png", ".webp"];
+
+        if (!allowedExtensions.includes(ext)) {
+          throw new Error("Only JPG, JPEG, PNG and WEBP images are allowed");
         }
-      });
 
-      stream.pipe(out);
-    });
+        // ================= UPLOAD DIRECTORY =================
 
-    // ================= PUBLIC URL =================
+        // Production:
+        // /var/www/chat-uploads/profile
 
-    const baseUrl =
-      process.env.PROFILE_UPLOAD_BASE_URL ||
-      "https://dhwaniastro.com/chat/uploads/profile";
+        const uploadRoot = process.env.UPLOAD_DIR || "/var/www/chat-uploads";
 
-    const fileUrl = `${baseUrl}/${newFileName}`;
+        const uploadDir = path.join(uploadRoot, "profile");
 
-    // ================= UPDATE USER =================
+        fs.mkdirSync(uploadDir, {
+          recursive: true,
+        });
 
-    const updatedUser = await prisma.user.update({
-      where: {
-        id: userId,
-      },
-      data: {
-        profileImage: fileUrl,
-      },
-    });
+        // ================= UNIQUE FILE NAME =================
 
-    // ================= RESPONSE =================
+        const newFileName = `${Date.now()}-${Math.random()
+          .toString(36)
+          .substring(2, 8)}${ext}`;
 
-    return {
-      success: true,
-      message: "Profile image updated successfully",
-      url: fileUrl,
-      filename: newFileName,
-      user: updatedUser,
-    };
-  } catch (error) {
-    console.error("uploadProfileImage error:", error);
+        const uploadPath = path.join(uploadDir, newFileName);
 
-    throw new Error(error.message || "Profile image upload failed");
-  }
-},
+        // ================= SAVE FILE =================
 
+        await new Promise((resolve, reject) => {
+          const stream = createReadStream();
+          const out = fs.createWriteStream(uploadPath);
+
+          let fileSize = 0;
+          let rejected = false;
+
+          stream.on("data", (chunk) => {
+            fileSize += chunk.length;
+
+            if (fileSize > MAX_FILE_SIZE && !rejected) {
+              rejected = true;
+
+              stream.destroy();
+              out.destroy();
+
+              if (fs.existsSync(uploadPath)) {
+                fs.unlinkSync(uploadPath);
+              }
+
+              reject(new Error("Profile image must be less than 2MB"));
+            }
+          });
+
+          stream.on("error", (error) => {
+            if (!rejected) {
+              reject(error);
+            }
+          });
+
+          out.on("error", (error) => {
+            if (!rejected) {
+              reject(error);
+            }
+          });
+
+          out.on("finish", () => {
+            if (!rejected) {
+              resolve();
+            }
+          });
+
+          stream.pipe(out);
+        });
+
+        // ================= PUBLIC URL =================
+
+        const baseUrl =
+          process.env.PROFILE_UPLOAD_BASE_URL ||
+          "https://dhwaniastro.com/chat/uploads/profile";
+
+        const fileUrl = `${baseUrl}/${newFileName}`;
+
+        // ================= UPDATE USER =================
+
+        const updatedUser = await prisma.user.update({
+          where: {
+            id: userId,
+          },
+          data: {
+            profileImage: fileUrl,
+          },
+        });
+
+        // ================= RESPONSE =================
+
+        return {
+          success: true,
+          message: "Profile image updated successfully",
+          url: fileUrl,
+          filename: newFileName,
+          user: updatedUser,
+        };
+      } catch (error) {
+        console.error("uploadProfileImage error:", error);
+
+        throw new Error(error.message || "Profile image upload failed");
+      }
+    },
 
     uploadImage: async (_, { file }, context) => {
       try {
@@ -5107,53 +5108,52 @@ uploadProfileImage: async (_, { file }, context) => {
       }
     },
 
- softDeleteUser: async (_, __, context) => {
-  try {
-    if (!context?.user) {
-      throw new Error("Unauthorized");
-    }
+    softDeleteUser: async (_, __, context) => {
+      try {
+        if (!context?.user) {
+          throw new Error("Unauthorized");
+        }
 
-    const userId = context.user.id;
+        const userId = context.user.id;
 
-    const user = await prisma.user.findUnique({
-      where: {
-        id: userId,
-      },
-      select: {
-        id: true,
-        isDeleted: true,
-      },
-    });
+        const user = await prisma.user.findUnique({
+          where: {
+            id: userId,
+          },
+          select: {
+            id: true,
+            isDeleted: true,
+          },
+        });
 
-    if (!user) {
-      throw new Error("User not found");
-    }
+        if (!user) {
+          throw new Error("User not found");
+        }
 
-    if (user.isDeleted) {
-      throw new Error("Account deleted");
-    }
+        if (user.isDeleted) {
+          throw new Error("Account deleted");
+        }
 
-    await prisma.user.update({
-      where: {
-        id: userId,
-      },
-      data: {
-        isDeleted: true,
-        isActive: false,
-        refreshToken: null,
-      },
-    });
+        await prisma.user.update({
+          where: {
+            id: userId,
+          },
+          data: {
+            isDeleted: true,
+            isActive: false,
+            refreshToken: null,
+          },
+        });
 
-    return {
-      success: true,
-      message: "Account deleted successfully",
-    };
-  } catch (error) {
-    console.error("softDeleteUser error:", error);
+        return {
+          success: true,
+          message: "Account deleted successfully",
+        };
+      } catch (error) {
+        console.error("softDeleteUser error:", error);
 
-    throw new Error(error.message || "Failed to delete account");
-  }
-},
-
+        throw new Error(error.message || "Failed to delete account");
+      }
+    },
   },
 };
