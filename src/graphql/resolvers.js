@@ -3112,7 +3112,7 @@ module.exports = {
             httpOnly: true,
             secure: true,
             sameSite: "none",
-            domain: `.${process.env.BASE_URL}`,
+            domain: `.${process.env.DOMAIN_NAME}`,
             maxAge: 1 * 24 * 60 * 60 * 1000,
             path: "/",
           });
@@ -3121,7 +3121,7 @@ module.exports = {
             httpOnly: true,
             secure: true,
             sameSite: "none",
-            domain: `.${process.env.BASE_URL}`,
+            domain: `.${process.env.DOMAIN_NAME}`,
             maxAge: 7 * 24 * 60 * 60 * 1000,
             path: "/",
           });
