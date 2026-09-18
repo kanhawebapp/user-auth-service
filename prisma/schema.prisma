@@ -1692,7 +1692,7 @@ model AstrologerPayout {
 
   astrologerId String
   astrologer Astrologer @relation(fields:[astrologerId],references:[id])
-remark          String?
+  remark          String?
   fromDate DateTime
   toDate DateTime
 
@@ -1804,7 +1804,7 @@ model RefundRequest {
   // Admin who created request
   requestedByStaffId String
   requestedByStaffName String
-sessionDate DateTime
+  sessionDate DateTime
   // Status
   status RefundRequestStatus @default(PENDING)
 
