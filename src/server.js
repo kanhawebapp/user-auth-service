@@ -17,16 +17,17 @@ const morgan = require("morgan");
 
 async function startServer() {
   const app = express();
+  const corsOrigins = process.env.CORS_ORIGINS
+    ? process.env.CORS_ORIGINS.split(",").map((origin) => origin.trim())
+    : [];
+
   app.use(
     cors({
-      origin: [
-        "http://localhost:3000",
-        "https://dhwaniastro.com",
-        "https://dhwani-new-vercel.vercel.app",
-      ],
+      origin: corsOrigins,
       credentials: true,
     }),
   );
+
   app.use(
     "/uploads",
     require("express").static(path.join(__dirname, "uploads")),

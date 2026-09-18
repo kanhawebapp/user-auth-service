@@ -3112,7 +3112,7 @@ module.exports = {
             httpOnly: true,
             secure: true,
             sameSite: "none",
-            domain: ".dhwaniastro.com",
+            domain: `.${process.env.BASE_URL}`,
             maxAge: 1 * 24 * 60 * 60 * 1000,
             path: "/",
           });
@@ -3121,7 +3121,7 @@ module.exports = {
             httpOnly: true,
             secure: true,
             sameSite: "none",
-            domain: ".dhwaniastro.com",
+            domain: `.${process.env.BASE_URL}`,
             maxAge: 7 * 24 * 60 * 60 * 1000,
             path: "/",
           });
@@ -3783,7 +3783,7 @@ module.exports = {
 
         const baseUrl =
           process.env.PROFILE_UPLOAD_BASE_URL ||
-          "https://dhwaniastro.com/chat/uploads/profile";
+          `${process.env.BASE_URL}/chat/uploads/profile`;
 
         const fileUrl = `${baseUrl}/${newFileName}`;
 
@@ -3855,10 +3855,10 @@ module.exports = {
           out.on("error", reject);
           stream.on("error", reject);
         });
-
+       
         // Public URL from .env
         const baseUrl =
-          process.env.UPLOAD_BASE_URL || "https://dhwaniastro.com/chat/uploads";
+          process.env.UPLOAD_BASE_URL || `${process.env.BASE_URL}/chat/uploads`;
 
         const fileUrl = `${baseUrl}/${newFileName}`;
 
@@ -3946,8 +3946,8 @@ module.exports = {
         const fileToken = Buffer.from(`${roomId}:${Date.now()}`).toString(
           "base64",
         );
-
-        const fileUrl = `https://dhwaniastro.com/v2/uploads/call-recordings/${newFileName}?token=${fileToken}`;
+         
+        const fileUrl = `${process.env.BASE_URL}/v2/uploads/call-recordings/${newFileName}?token=${fileToken}`;
 
         let sessionId = null;
 
