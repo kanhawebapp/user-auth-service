@@ -117,6 +117,7 @@ module.exports = {
             birthDate: true,
             birthTime: true,
             occupation: true,
+            profileImage: true,
           },
         });
 
