@@ -3,6 +3,7 @@ const axios = require("axios");
 const sendOTP = async ({ countryCode, mobile, otp }) => {
   try {
     const fullMobile = `${countryCode.replace("+", "")}${mobile}`;
+    console.log("----mobile no----:",fullMobile);
 
     const response = await axios.get(
       "https://control.msg91.com/api/v5/otp",
