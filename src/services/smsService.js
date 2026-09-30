@@ -3,8 +3,6 @@ const axios = require("axios");
 const sendOTP = async ({ countryCode, mobile, otp }) => {
   try {
     const fullMobile = `${countryCode.replace("+", "")}${mobile}`;
-    console.log("----mobile no----:",fullMobile);
-
     const response = await axios.get(
       "https://control.msg91.com/api/v5/otp",
       {
@@ -23,7 +21,6 @@ const sendOTP = async ({ countryCode, mobile, otp }) => {
     ) {
       throw new Error(response.data.message || "Failed to send OTP");
     }
-    console.log("------comming for otp-----------------",response.data);
     return response.data;
   } catch (error) {
     console.error("MSG91 Error:", error.response?.data || error.message);
