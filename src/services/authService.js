@@ -58,6 +58,7 @@ const sendOTPService = async (countryCode, mobile) => {
 
     // Generate OTP
     const otp = generateOtp();
+    console.log("otp---------:",otp);
 
     // Store OTP
     await redis.set(`otp:${phoneKey}`, otp, "EX", OTP_EXPIRE);
