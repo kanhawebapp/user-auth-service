@@ -22,7 +22,7 @@ const sendOTP = async ({ countryCode, mobile, otp }) => {
     ) {
       throw new Error(response.data.message || "Failed to send OTP");
     }
-
+    console.log("------comming for otp-----------------",response.data);
     return response.data;
   } catch (error) {
     console.error("MSG91 Error:", error.response?.data || error.message);
