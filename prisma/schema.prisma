@@ -267,7 +267,7 @@ model Astrologer {
 
   about String
 
-  rating Float?  @default(0)
+  rating Float? @default(0)
   status Boolean @default(false)
 
   tags  String
@@ -282,46 +282,60 @@ model Astrologer {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
- isEligibleChat  Boolean @default(false)
+
+  isEligibleChat  Boolean @default(false)
   isEligibleCall  Boolean @default(false)
   isEligibleVideo Boolean @default(false)
   isEligibleAudio Boolean @default(false)
-  isCallActive  Boolean @default(false)
-  isChatActive  Boolean @default(false)
-  isLiveActive  Boolean @default(false)
-  isBusy        Boolean @default(false)
-  isOnline      Boolean @default(false)
+
+  isCallActive Boolean @default(false)
+  isChatActive Boolean @default(false)
+  isLiveActive Boolean @default(false)
+  isBusy       Boolean @default(false)
+  isOnline     Boolean @default(false)
+
   isPromotional Boolean @default(false)
+
+  // Soft delete
+  isDeleted Boolean @default(false)
+
+  // Delete information
+  deletedAt     DateTime?
+  deletedById   String?
+  deletedByName String?
+  deleteRemark  String?
 
   approvedBy Staff?     @relation("ApprovedAstrologers", fields: [approvedById], references: [id])
   createdBy  Staff?     @relation("CreatedAstrologers", fields: [createdById], references: [id])
   kycDetail  KycDetail?
 
-  intakes           Intake[]
-  addresses         Address[]
-  experiences       ExperiencePlatform[]
-  interviews        Interview[]
-  documents         AstrologerDocument[]
-  rejectionHistory  AstrologerRejectionHistory[]
-  wallet            AstrologerWallet?
-  sessions          Session[]
-  reviews           Review[]
-  pricing           AstrologerPricing[]
-  applications      AstrologerApplication[]
+  intakes          Intake[]
+  addresses        Address[]
+  experiences      ExperiencePlatform[]
+  interviews       Interview[]
+  documents        AstrologerDocument[]
+  rejectionHistory AstrologerRejectionHistory[]
+  wallet           AstrologerWallet?
+  sessions         Session[]
+  reviews          Review[]
+  pricing          AstrologerPricing[]
+  applications     AstrologerApplication[]
   offers            AstrologerOffer[]
-  giftsReceived     GiftHistory[]                @relation("AstrologerGiftHistory")
-  followers         AstrologerFollow[]
-  serviceBookings   ServiceBooking[]
+  giftsReceived    GiftHistory[] @relation("AstrologerGiftHistory")
+  followers        AstrologerFollow[]
+  serviceBookings  ServiceBooking[]
   noticeAstrologers NoticeAstrologer[]
-  serviceMappings   ServiceAstrologer[]
-  liveStreams       LiveStream[]
-  callRecordings CallRecording[]
-  isDeleted Boolean @default(false)
-  payouts AstrologerPayout[] 
-  tax AstrologerTax?
+  serviceMappings  ServiceAstrologer[]
+  liveStreams      LiveStream[]
+  callRecordings   CallRecording[]
+  payouts          AstrologerPayout[]
+  tax              AstrologerTax?
+
   @@index([rating])
   @@index([experience])
 }
+
+
 
 model ServiceAstrologer {
   id String @id @default(cuid())
@@ -678,6 +692,7 @@ model RechargePack {
   @@index([coins])
   @@index([createdAt])
 }
+
 
 model UserWallet {
   id     String @id @default(uuid())
@@ -1692,7 +1707,7 @@ model AstrologerPayout {
 
   astrologerId String
   astrologer Astrologer @relation(fields:[astrologerId],references:[id])
-  remark          String?
+remark          String?
   fromDate DateTime
   toDate DateTime
 
@@ -1804,7 +1819,7 @@ model RefundRequest {
   // Admin who created request
   requestedByStaffId String
   requestedByStaffName String
-  sessionDate DateTime
+sessionDate DateTime
   // Status
   status RefundRequestStatus @default(PENDING)
 
