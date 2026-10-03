@@ -1124,21 +1124,23 @@ enum BannerType {
   #------START VERIFY COUPON---
   #------END COUPON----------------------------------------
   input VerifyServiceCouponInput {
-    bookingId: ID!
-    couponCode: String!
-  }
+  bookingId: ID!
+  couponCode: String!
+}
 
-  type VerifyServiceCouponResponse {
-    success: Boolean!
-    message: String
-    coupon: Coupon
-    totalAmount: Float!
-    discount: Float!
-    cashback: Float!
-    payableAmount: Float!
-    gstAmount: Float
-    originalAmount: Float
-  }
+type VerifyServiceCouponResponse {
+  success: Boolean!
+  message: String
+
+  coupon: Coupon
+
+  originalAmount: Float!
+  discount: Float!
+  discountedPrice: Float!
+  gstAmount: Float!
+  payableAmount: Float!
+  cashback: Float!
+}
   #-----START CODE FOR CREATE ORDER FOR HEALING SERVICES---
 
   type CreateHealingOrderResponse {
@@ -1563,8 +1565,9 @@ enum BannerType {
     ): UploadCallRecordingResponse!
 
     verifyServiceCoupon(
-      input: VerifyServiceCouponInput!
-    ): VerifyServiceCouponResponse!
+  input: VerifyServiceCouponInput!
+): VerifyServiceCouponResponse!
+
       uploadProfileImage(
     file: Upload!
   ): ProfileImageUploadResponse!
