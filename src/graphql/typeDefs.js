@@ -1421,6 +1421,11 @@ type VerifyServiceCouponResponse {
   message: String!
 }
   #----------END-----------
+  input VerifyRechargeCouponInput {
+  rechargePackId: ID!
+  couponCode: String!
+}
+  
   type Query {
    getPaymentInvoice(transactionId: ID!): PaymentInvoice
     getAstrologerCategories: [AstrologerCategory!]!
