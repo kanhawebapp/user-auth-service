@@ -1457,6 +1457,7 @@ model ServicePaymentOrder {
 
   couponId String?
   coupon Coupon? @relation("CouponServicePaymentOrders", fields: [couponId], references: [id])
+  couponRedemption CouponRedemption?
 
   discount Float @default(0)
   cashback Float @default(0)
@@ -1672,10 +1673,7 @@ model CouponRedemption {
 
   // Service booking payment
   servicePaymentOrderId String? @unique
-  servicePaymentOrder ServicePaymentOrder? @relation(
-    fields: [servicePaymentOrderId],
-    references: [id]
-  )
+  servicePaymentOrder ServicePaymentOrder? @relation(fields: [servicePaymentOrderId], references: [id])
 
   discount Float
 
