@@ -1666,8 +1666,16 @@ model CouponRedemption {
   userId String
   user User @relation(fields: [userId], references: [id])
 
-  paymentOrderId String @unique
-  paymentOrder PaymentOrder @relation(fields: [paymentOrderId], references: [id])
+  // Recharge payment
+  paymentOrderId String? @unique
+  paymentOrder PaymentOrder? @relation(fields: [paymentOrderId], references: [id])
+
+  // Service booking payment
+  servicePaymentOrderId String? @unique
+  servicePaymentOrder ServicePaymentOrder? @relation(
+    fields: [servicePaymentOrderId],
+    references: [id]
+  )
 
   discount Float
 
