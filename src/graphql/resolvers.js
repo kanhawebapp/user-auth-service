@@ -4803,6 +4803,7 @@ module.exports = {
 
     createHealingOrder: async (_, { input }, context) => {
       try {
+        console.log("comming in createHealingOrder");
         if (!context.user) {
           throw new Error("Unauthorized");
         }
@@ -4814,7 +4815,7 @@ module.exports = {
             id: bookingId,
           },
         });
-
+       console.log("couponCode-------:",couponCode);
         if (!booking) {
           throw new Error("Booking not found");
         }
@@ -4867,7 +4868,7 @@ module.exports = {
           //--------------------------------------
           // DISCOUNT
           //--------------------------------------
-
+          console.log("coupantype-------------:",coupon.type);
           if (coupon.type === "DISCOUNT") {
             discount = (totalAmount * (coupon.percentage || 0)) / 100;
 
