@@ -1141,7 +1141,21 @@ type VerifyServiceCouponResponse {
   payableAmount: Float!
   cashback: Float!
 }
+
+
   #-----START CODE FOR CREATE ORDER FOR HEALING SERVICES---
+  #------------verify recharge coupon----
+  type VerifyCouponResponse {
+  success: Boolean!
+  message: String
+  originalAmount: Float
+  discount: Float
+  discountedPrice: Float
+  cashback: Float
+  payableAmount: Float
+  gstAmount: Float
+  coupon: Coupon
+}
 
   type CreateHealingOrderResponse {
     success: Boolean!
@@ -1567,6 +1581,11 @@ type VerifyServiceCouponResponse {
     verifyServiceCoupon(
   input: VerifyServiceCouponInput!
 ): VerifyServiceCouponResponse!
+
+   verifyRechargeCoupon(
+    input: VerifyRechargeCouponInput!
+  ): VerifyServiceCouponResponse!
+
 
       uploadProfileImage(
     file: Upload!

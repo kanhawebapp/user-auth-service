@@ -4158,6 +4158,480 @@ module.exports = {
         };
       }
     },
+    verifyRechargeCoupon: async (_, { input }, context) => {
+  try {
+    /*
+     * =====================================================
+     * AUTHENTICATION
+     * =====================================================
+     */
+    if (!context.user) {
+      throw new Error(
+        "Unauthorized: Please login to apply coupon"
+      );
+    }
+
+    const userId = context.user.id;
+
+    const {
+      rechargePackId,
+      couponCode,
+    } = input;
+
+    /*
+     * =====================================================
+     * VALIDATE INPUT
+     * =====================================================
+     */
+    if (!rechargePackId) {
+      throw new Error(
+        "Recharge pack ID is required"
+      );
+    }
+
+    if (!couponCode) {
+      throw new Error(
+        "Coupon code is required"
+      );
+    }
+
+    /*
+     * =====================================================
+     * GET RECHARGE PACK
+     * =====================================================
+     */
+    const rechargePack =
+      await prisma.rechargePack.findUnique({
+        where: {
+          id: rechargePackId,
+        },
+      });
+
+    if (!rechargePack) {
+      throw new Error(
+        "Recharge pack not found"
+      );
+    }
+
+    /*
+     * =====================================================
+     * ORIGINAL RECHARGE AMOUNT
+     *
+     * Coupon is applied BEFORE GST.
+     * =====================================================
+     */
+    const originalAmount =
+      Number(rechargePack.price || 0);
+
+    if (originalAmount <= 0) {
+      throw new Error(
+        "Invalid recharge pack amount"
+      );
+    }
+
+    /*
+     * =====================================================
+     * FIND COUPON
+     * =====================================================
+     */
+    const normalizedCode =
+      couponCode
+        .trim()
+        .toUpperCase();
+
+    const coupon =
+      await prisma.coupon.findUnique({
+        where: {
+          code: normalizedCode,
+        },
+      });
+
+    if (!coupon) {
+      throw new Error(
+        "Invalid coupon code"
+      );
+    }
+
+    /*
+     * =====================================================
+     * COUPON STATUS
+     * =====================================================
+     */
+    if (!coupon.status) {
+      throw new Error(
+        "Coupon is currently inactive"
+      );
+    }
+
+    /*
+     * =====================================================
+     * COUPON VISIBILITY
+     * =====================================================
+     */
+    if (
+      coupon.visibility !== "VISIBLE"
+    ) {
+      throw new Error(
+        "Coupon is currently not available"
+      );
+    }
+
+    /*
+     * =====================================================
+     * COUPON DATE VALIDATION
+     * =====================================================
+     */
+    const now = new Date();
+
+    if (
+      coupon.startDate &&
+      coupon.startDate > now
+    ) {
+      throw new Error(
+        `Coupon is not active yet. Valid from ${coupon.startDate.toLocaleDateString()}`
+      );
+    }
+
+    if (
+      coupon.endDate &&
+      coupon.endDate < now
+    ) {
+      throw new Error(
+        `Coupon has expired on ${coupon.endDate.toLocaleDateString()}`
+      );
+    }
+
+    /*
+     * =====================================================
+     * APPLICABLE CHECK
+     *
+     * Recharge coupons should contain:
+     *
+     * recharge
+     * recharges
+     * both
+     *
+     * Empty applicable is also allowed because the
+     * existing service resolver treats empty value
+     * as unrestricted.
+     * =====================================================
+     */
+    const applicable =
+      coupon.applicable?.toLowerCase();
+
+    if (
+      applicable &&
+      applicable !== "recharge" &&
+      applicable !== "recharges" &&
+      applicable !== "both"
+    ) {
+      throw new Error(
+        "This coupon is not applicable for recharge"
+      );
+    }
+
+    /*
+     * =====================================================
+     * GLOBAL REDEMPTION LIMIT
+     * =====================================================
+     */
+    if (
+      coupon.redeemLimit !== null &&
+      coupon.redeemLimit !== undefined &&
+      Number(coupon.usedCount || 0) >=
+        Number(coupon.redeemLimit)
+    ) {
+      throw new Error(
+        "Coupon redemption limit has been reached"
+      );
+    }
+
+    /*
+     * =====================================================
+     * MINIMUM ORDER AMOUNT
+     *
+     * Check against ORIGINAL recharge price.
+     *
+     * GST is NOT included.
+     * =====================================================
+     */
+    if (
+      coupon.minOrderAmount !== null &&
+      coupon.minOrderAmount !== undefined &&
+      originalAmount <
+        Number(coupon.minOrderAmount)
+    ) {
+      throw new Error(
+        `Minimum order amount of ₹${coupon.minOrderAmount} is required for this coupon`
+      );
+    }
+
+    /*
+     * =====================================================
+     * CHECK USER REDEMPTION
+     *
+     * User cannot redeem the same coupon again.
+     * =====================================================
+     */
+    const alreadyRedeemed =
+      await prisma.couponRedemption.findFirst({
+        where: {
+          couponId: coupon.id,
+          userId: userId,
+        },
+      });
+
+    if (alreadyRedeemed) {
+      throw new Error(
+        "You have already used this coupon"
+      );
+    }
+
+    /*
+     * =====================================================
+     * CALCULATE DISCOUNT
+     * =====================================================
+     */
+    let discount = 0;
+
+    let cashback = 0;
+
+    /*
+     * =====================================================
+     * DISCOUNT COUPON
+     * =====================================================
+     */
+    if (
+      coupon.type === "DISCOUNT"
+    ) {
+
+      /*
+       * Percentage discount
+       */
+      if (
+        coupon.percentage !== null &&
+        coupon.percentage !== undefined
+      ) {
+        discount =
+          (
+            originalAmount *
+            Number(coupon.percentage)
+          ) / 100;
+      }
+
+      /*
+       * Flat discount
+       */
+      if (
+        coupon.flatAmount !== null &&
+        coupon.flatAmount !== undefined
+      ) {
+        discount =
+          Number(coupon.flatAmount);
+      }
+
+      /*
+       * Maximum discount
+       */
+      if (
+        coupon.maxDiscount !== null &&
+        coupon.maxDiscount !== undefined &&
+        discount >
+          Number(coupon.maxDiscount)
+      ) {
+        discount =
+          Number(coupon.maxDiscount);
+      }
+
+      /*
+       * Discount cannot exceed recharge price.
+       */
+      discount = Math.min(
+        discount,
+        originalAmount
+      );
+    }
+
+    /*
+     * =====================================================
+     * CASHBACK
+     * =====================================================
+     */
+    if (
+      coupon.type === "CASHBACK"
+    ) {
+
+      cashback =
+        (
+          originalAmount *
+          Number(
+            coupon.percentage || 0
+          )
+        ) / 100;
+
+      /*
+       * Maximum cashback
+       */
+      if (
+        coupon.maxDiscount !== null &&
+        coupon.maxDiscount !== undefined &&
+        cashback >
+          Number(coupon.maxDiscount)
+      ) {
+        cashback =
+          Number(coupon.maxDiscount);
+      }
+    }
+
+    /*
+     * =====================================================
+     * PRICE AFTER DISCOUNT
+     * =====================================================
+     */
+    const discountedPrice =
+      originalAmount - discount;
+
+    /*
+     * =====================================================
+     * GST
+     *
+     * GST is calculated AFTER discount.
+     * =====================================================
+     */
+    const gstAmount =
+      (
+        discountedPrice * 18
+      ) / 100;
+
+    /*
+     * =====================================================
+     * FINAL PAYABLE
+     * =====================================================
+     */
+    const payableAmount =
+      discountedPrice +
+      gstAmount;
+
+    /*
+     * =====================================================
+     * RESPONSE
+     * =====================================================
+     */
+    return {
+      success: true,
+
+      message:
+        "Coupon verified successfully",
+
+      coupon: {
+        ...coupon,
+
+        /*
+         * Prisma Decimal -> Number
+         */
+        flatAmount:
+          coupon.flatAmount !== null
+            ? Number(
+                coupon.flatAmount
+              )
+            : null,
+
+        maxDiscount:
+          coupon.maxDiscount !== null
+            ? Number(
+                coupon.maxDiscount
+              )
+            : null,
+
+        minOrderAmount:
+          coupon.minOrderAmount !== null
+            ? Number(
+                coupon.minOrderAmount
+              )
+            : null,
+      },
+
+      /*
+       * Original recharge price
+       */
+      originalAmount:
+        Math.round(
+          originalAmount * 100
+        ) / 100,
+
+      /*
+       * Coupon discount
+       */
+      discount:
+        Math.round(
+          discount * 100
+        ) / 100,
+
+      /*
+       * Price after coupon
+       */
+      discountedPrice:
+        Math.round(
+          discountedPrice * 100
+        ) / 100,
+
+      /*
+       * GST
+       */
+      gstAmount:
+        Math.round(
+          gstAmount * 100
+        ) / 100,
+
+      /*
+       * Cashback
+       */
+      cashback:
+        Math.round(
+          cashback * 100
+        ) / 100,
+
+      /*
+       * Final payable amount
+       */
+      payableAmount:
+        Math.round(
+          payableAmount * 100
+        ) / 100,
+    };
+
+  } catch (error) {
+
+    console.error(
+      "Recharge coupon verification error:",
+      error
+    );
+
+    return {
+      success: false,
+
+      message:
+        error.message ||
+        "Failed to verify recharge coupon",
+
+      coupon: null,
+
+      totalAmount: 0,
+
+      discount: 0,
+
+      cashback: 0,
+
+      payableAmount: 0,
+
+      gstAmount: 0,
+
+      originalAmount: 0,
+
+      discountedPrice: 0,
+    };
+  }
+},
 
    verifyServiceCoupon: async (_, { input }, context) => {
   try {
