@@ -5162,7 +5162,8 @@ module.exports = {
           //--------------------------------------
 
           if (coupon.type === "CASHBACK") {
-            payableAmount = totalAmount;
+            const gstAmount = (totalAmount * 18) / 100;
+            payableAmount = totalAmount + gstAmount;
 
             cashback = (totalAmount * (coupon.percentage || 0)) / 100;
 
