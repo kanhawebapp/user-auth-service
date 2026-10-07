@@ -5219,7 +5219,7 @@ module.exports = {
           bookingId: booking.id,
 
           totalAmount,
-          payableAmount,
+          amount:payableAmount,
         };
       } catch (error) {
         console.error("createHealingOrder error:", error);
