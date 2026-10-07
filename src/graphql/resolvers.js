@@ -2931,90 +2931,87 @@ module.exports = {
         throw new Error(error.message || "Failed to join live stream");
       }
     },
-   getCoupons: async (_, __, context) => {
-  try {
-    /*
-     * ---------------------------------------------
-     * AUTHENTICATION
-     * ---------------------------------------------
-     */
-    if (!context.user) {
-      throw new Error("Unauthorized");
-    }
+    getCoupons: async (_, __, context) => {
+      try {
+        /*
+         * ---------------------------------------------
+         * AUTHENTICATION
+         * ---------------------------------------------
+         */
+        if (!context.user) {
+          throw new Error("Unauthorized");
+        }
 
-    const userId = context.user.id;
+        const userId = context.user.id;
 
-    /*
-     * ---------------------------------------------
-     * GET ALL ACTIVE COUPONS
-     * ---------------------------------------------
-     */
-    const coupons = await prisma.coupon.findMany({
-      where: {
-        status: true,
-        visibility: "VISIBLE",
-      },
-      orderBy: {
-        createdAt: "desc",
-      },
-    });
-
-    /*
-     * ---------------------------------------------
-     * REMOVE COUPONS ALREADY REDEEMED BY USER
-     * ---------------------------------------------
-     */
-    const availableCoupons = [];
-
-    for (const coupon of coupons) {
-      const alreadyRedeemed =
-        await prisma.couponRedemption.findFirst({
+        /*
+         * ---------------------------------------------
+         * GET ALL ACTIVE COUPONS
+         * ---------------------------------------------
+         */
+        const coupons = await prisma.coupon.findMany({
           where: {
-            couponId: coupon.id,
-            userId: userId,
+            status: true,
+            visibility: "VISIBLE",
+          },
+          orderBy: {
+            createdAt: "desc",
           },
         });
 
-      if (alreadyRedeemed) {
-        continue;
+        /*
+         * ---------------------------------------------
+         * REMOVE COUPONS ALREADY REDEEMED BY USER
+         * ---------------------------------------------
+         */
+        const availableCoupons = [];
+
+        for (const coupon of coupons) {
+          const alreadyRedeemed = await prisma.couponRedemption.findFirst({
+            where: {
+              couponId: coupon.id,
+              userId: userId,
+            },
+          });
+
+          if (alreadyRedeemed) {
+            continue;
+          }
+
+          /*
+           * Check global redemption limit
+           */
+          if (
+            coupon.redeemLimit !== null &&
+            coupon.redeemLimit !== undefined &&
+            coupon.usedCount >= coupon.redeemLimit
+          ) {
+            continue;
+          }
+
+          /*
+           * Check coupon date
+           */
+          const now = new Date();
+
+          if (coupon.startDate && coupon.startDate > now) {
+            continue;
+          }
+
+          if (coupon.endDate && coupon.endDate < now) {
+            continue;
+          }
+
+          availableCoupons.push(coupon);
+        }
+
+        return availableCoupons;
+      } catch (error) {
+        console.error("Get coupons error:", error);
+
+        throw new Error(error.message || "Failed to fetch coupons");
       }
-
-      /*
-       * Check global redemption limit
-       */
-      if (
-        coupon.redeemLimit !== null &&
-        coupon.redeemLimit !== undefined &&
-        coupon.usedCount >= coupon.redeemLimit
-      ) {
-        continue;
-      }
-
-      /*
-       * Check coupon date
-       */
-      const now = new Date();
-
-      if (coupon.startDate && coupon.startDate > now) {
-        continue;
-      }
-
-      if (coupon.endDate && coupon.endDate < now) {
-        continue;
-      }
-
-      availableCoupons.push(coupon);
-    }
-
-    return availableCoupons;
-  } catch (error) {
-    console.error("Get coupons error:", error);
-
-    throw new Error(
-      error.message || "Failed to fetch coupons"
-    );
-  }
-},
+    },
     getServiceBooking: async (_, { bookingId }) => {
       return prisma.serviceBooking.findUnique({
         where: {
@@ -3926,7 +3923,7 @@ module.exports = {
           out.on("error", reject);
           stream.on("error", reject);
         });
-       
+
         // Public URL from .env
         const baseUrl =
           process.env.UPLOAD_BASE_URL || `${process.env.BASE_URL}/chat/uploads`;
@@ -4017,7 +4014,7 @@ module.exports = {
         const fileToken = Buffer.from(`${roomId}:${Date.now()}`).toString(
           "base64",
         );
-         
+
         const fileUrl = `${process.env.BASE_URL}/v2/uploads/call-recordings/${newFileName}?token=${fileToken}`;
 
         let sessionId = null;
@@ -4159,942 +4156,743 @@ module.exports = {
       }
     },
     verifyRechargeCoupon: async (_, { input }, context) => {
-  try {
-    /*
-     * =====================================================
-     * AUTHENTICATION
-     * =====================================================
-     */
-    if (!context.user) {
-      throw new Error(
-        "Unauthorized: Please login to apply coupon"
-      );
-    }
+      try {
+        /*
+         * =====================================================
+         * AUTHENTICATION
+         * =====================================================
+         */
+        if (!context.user) {
+          throw new Error("Unauthorized: Please login to apply coupon");
+        }
 
-    const userId = context.user.id;
+        const userId = context.user.id;
 
-    const {
-      rechargePackId,
-      couponCode,
-    } = input;
-
-    /*
-     * =====================================================
-     * VALIDATE INPUT
-     * =====================================================
-     */
-    if (!rechargePackId) {
-      throw new Error(
-        "Recharge pack ID is required"
-      );
-    }
-
-    if (!couponCode) {
-      throw new Error(
-        "Coupon code is required"
-      );
-    }
-
-    /*
-     * =====================================================
-     * GET RECHARGE PACK
-     * =====================================================
-     */
-    const rechargePack =
-      await prisma.rechargePack.findUnique({
-        where: {
-          id: rechargePackId,
-        },
-      });
-
-    if (!rechargePack) {
-      throw new Error(
-        "Recharge pack not found"
-      );
-    }
-
-    /*
-     * =====================================================
-     * ORIGINAL RECHARGE AMOUNT
-     *
-     * Coupon is applied BEFORE GST.
-     * =====================================================
-     */
-    const originalAmount =
-      Number(rechargePack.price || 0);
-
-    if (originalAmount <= 0) {
-      throw new Error(
-        "Invalid recharge pack amount"
-      );
-    }
-
-    /*
-     * =====================================================
-     * FIND COUPON
-     * =====================================================
-     */
-    const normalizedCode =
-      couponCode
-        .trim()
-        .toUpperCase();
-
-    const coupon =
-      await prisma.coupon.findUnique({
-        where: {
-          code: normalizedCode,
-        },
-      });
-
-    if (!coupon) {
-      throw new Error(
-        "Invalid coupon code"
-      );
-    }
-
-    /*
-     * =====================================================
-     * COUPON STATUS
-     * =====================================================
-     */
-    if (!coupon.status) {
-      throw new Error(
-        "Coupon is currently inactive"
-      );
-    }
-
-    /*
-     * =====================================================
-     * COUPON VISIBILITY
-     * =====================================================
-     */
-    if (
-      coupon.visibility !== "VISIBLE"
-    ) {
-      throw new Error(
-        "Coupon is currently not available"
-      );
-    }
-
-    /*
-     * =====================================================
-     * COUPON DATE VALIDATION
-     * =====================================================
-     */
-    const now = new Date();
-
-    if (
-      coupon.startDate &&
-      coupon.startDate > now
-    ) {
-      throw new Error(
-        `Coupon is not active yet. Valid from ${coupon.startDate.toLocaleDateString()}`
-      );
-    }
-
-    if (
-      coupon.endDate &&
-      coupon.endDate < now
-    ) {
-      throw new Error(
-        `Coupon has expired on ${coupon.endDate.toLocaleDateString()}`
-      );
-    }
-
-    /*
-     * =====================================================
-     * APPLICABLE CHECK
-     *
-     * Recharge coupons should contain:
-     *
-     * recharge
-     * recharges
-     * both
-     *
-     * Empty applicable is also allowed because the
-     * existing service resolver treats empty value
-     * as unrestricted.
-     * =====================================================
-     */
-    const applicable =
-      coupon.applicable?.toLowerCase();
-
-    if (
-      applicable &&
-      applicable !== "recharge" &&
-      applicable !== "recharges" &&
-      applicable !== "both"
-    ) {
-      throw new Error(
-        "This coupon is not applicable for recharge"
-      );
-    }
-
-    /*
-     * =====================================================
-     * GLOBAL REDEMPTION LIMIT
-     * =====================================================
-     */
-    if (
-      coupon.redeemLimit !== null &&
-      coupon.redeemLimit !== undefined &&
-      Number(coupon.usedCount || 0) >=
-        Number(coupon.redeemLimit)
-    ) {
-      throw new Error(
-        "Coupon redemption limit has been reached"
-      );
-    }
-
-    /*
-     * =====================================================
-     * MINIMUM ORDER AMOUNT
-     *
-     * Check against ORIGINAL recharge price.
-     *
-     * GST is NOT included.
-     * =====================================================
-     */
-    if (
-      coupon.minOrderAmount !== null &&
-      coupon.minOrderAmount !== undefined &&
-      originalAmount <
-        Number(coupon.minOrderAmount)
-    ) {
-      throw new Error(
-        `Minimum order amount of ₹${coupon.minOrderAmount} is required for this coupon`
-      );
-    }
-
-    /*
-     * =====================================================
-     * CHECK USER REDEMPTION
-     *
-     * User cannot redeem the same coupon again.
-     * =====================================================
-     */
-    const alreadyRedeemed =
-      await prisma.couponRedemption.findFirst({
-        where: {
-          couponId: coupon.id,
-          userId: userId,
-        },
-      });
-
-    if (alreadyRedeemed) {
-      throw new Error(
-        "You have already used this coupon"
-      );
-    }
-
-    /*
-     * =====================================================
-     * CALCULATE DISCOUNT
-     * =====================================================
-     */
-    let discount = 0;
-
-    let cashback = 0;
-
-    /*
-     * =====================================================
-     * DISCOUNT COUPON
-     * =====================================================
-     */
-    if (
-      coupon.type === "DISCOUNT"
-    ) {
-
-      /*
-       * Percentage discount
-       */
-      if (
-        coupon.percentage !== null &&
-        coupon.percentage !== undefined
-      ) {
-        discount =
-          (
-            originalAmount *
-            Number(coupon.percentage)
-          ) / 100;
-      }
-
-      /*
-       * Flat discount
-       */
-      if (
-        coupon.flatAmount !== null &&
-        coupon.flatAmount !== undefined
-      ) {
-        discount =
-          Number(coupon.flatAmount);
-      }
-
-      /*
-       * Maximum discount
-       */
-      if (
-        coupon.maxDiscount !== null &&
-        coupon.maxDiscount !== undefined &&
-        discount >
-          Number(coupon.maxDiscount)
-      ) {
-        discount =
-          Number(coupon.maxDiscount);
-      }
-
-      /*
-       * Discount cannot exceed recharge price.
-       */
-      discount = Math.min(
-        discount,
-        originalAmount
-      );
-    }
-
-    /*
-     * =====================================================
-     * CASHBACK
-     * =====================================================
-     */
-    if (
-      coupon.type === "CASHBACK"
-    ) {
-
-      cashback =
-        (
-          originalAmount *
-          Number(
-            coupon.percentage || 0
-          )
-        ) / 100;
-
-      /*
-       * Maximum cashback
-       */
-      if (
-        coupon.maxDiscount !== null &&
-        coupon.maxDiscount !== undefined &&
-        cashback >
-          Number(coupon.maxDiscount)
-      ) {
-        cashback =
-          Number(coupon.maxDiscount);
-      }
-    }
-
-    /*
-     * =====================================================
-     * PRICE AFTER DISCOUNT
-     * =====================================================
-     */
-    const discountedPrice =
-      originalAmount - discount;
-
-    /*
-     * =====================================================
-     * GST
-     *
-     * GST is calculated AFTER discount.
-     * =====================================================
-     */
-    const gstAmount =
-      (
-        discountedPrice * 18
-      ) / 100;
-
-    /*
-     * =====================================================
-     * FINAL PAYABLE
-     * =====================================================
-     */
-    const payableAmount =
-      discountedPrice +
-      gstAmount;
-
-    /*
-     * =====================================================
-     * RESPONSE
-     * =====================================================
-     */
-    return {
-      success: true,
-
-      message:
-        "Coupon verified successfully",
-
-      coupon: {
-        ...coupon,
+        const { rechargePackId, couponCode } = input;
 
         /*
-         * Prisma Decimal -> Number
+         * =====================================================
+         * VALIDATE INPUT
+         * =====================================================
          */
-        flatAmount:
-          coupon.flatAmount !== null
-            ? Number(
-                coupon.flatAmount
-              )
-            : null,
+        if (!rechargePackId) {
+          throw new Error("Recharge pack ID is required");
+        }
 
-        maxDiscount:
-          coupon.maxDiscount !== null
-            ? Number(
-                coupon.maxDiscount
-              )
-            : null,
+        if (!couponCode) {
+          throw new Error("Coupon code is required");
+        }
 
-        minOrderAmount:
-          coupon.minOrderAmount !== null
-            ? Number(
-                coupon.minOrderAmount
-              )
-            : null,
-      },
+        /*
+         * =====================================================
+         * GET RECHARGE PACK
+         * =====================================================
+         */
+        const rechargePack = await prisma.rechargePack.findUnique({
+          where: {
+            id: rechargePackId,
+          },
+        });
 
-      /*
-       * Original recharge price
-       */
-      originalAmount:
-        Math.round(
-          originalAmount * 100
-        ) / 100,
+        if (!rechargePack) {
+          throw new Error("Recharge pack not found");
+        }
 
-      /*
-       * Coupon discount
-       */
-      discount:
-        Math.round(
-          discount * 100
-        ) / 100,
+        /*
+         * =====================================================
+         * ORIGINAL RECHARGE AMOUNT
+         *
+         * Coupon is applied BEFORE GST.
+         * =====================================================
+         */
+        const originalAmount = Number(rechargePack.price || 0);
 
-      /*
-       * Price after coupon
-       */
-      discountedPrice:
-        Math.round(
-          discountedPrice * 100
-        ) / 100,
+        if (originalAmount <= 0) {
+          throw new Error("Invalid recharge pack amount");
+        }
 
-      /*
-       * GST
-       */
-      gstAmount:
-        Math.round(
-          gstAmount * 100
-        ) / 100,
+        /*
+         * =====================================================
+         * FIND COUPON
+         * =====================================================
+         */
+        const normalizedCode = couponCode.trim().toUpperCase();
 
-      /*
-       * Cashback
-       */
-      cashback:
-        Math.round(
-          cashback * 100
-        ) / 100,
+        const coupon = await prisma.coupon.findUnique({
+          where: {
+            code: normalizedCode,
+          },
+        });
 
-      /*
-       * Final payable amount
-       */
-      payableAmount:
-        Math.round(
-          payableAmount * 100
-        ) / 100,
-    };
+        if (!coupon) {
+          throw new Error("Invalid coupon code");
+        }
 
-  } catch (error) {
+        /*
+         * =====================================================
+         * COUPON STATUS
+         * =====================================================
+         */
+        if (!coupon.status) {
+          throw new Error("Coupon is currently inactive");
+        }
 
-    console.error(
-      "Recharge coupon verification error:",
-      error
-    );
+        /*
+         * =====================================================
+         * COUPON VISIBILITY
+         * =====================================================
+         */
+        if (coupon.visibility !== "VISIBLE") {
+          throw new Error("Coupon is currently not available");
+        }
 
-    return {
-      success: false,
+        /*
+         * =====================================================
+         * COUPON DATE VALIDATION
+         * =====================================================
+         */
+        const now = new Date();
 
-      message:
-        error.message ||
-        "Failed to verify recharge coupon",
+        if (coupon.startDate && coupon.startDate > now) {
+          throw new Error(
+            `Coupon is not active yet. Valid from ${coupon.startDate.toLocaleDateString()}`,
+          );
+        }
 
-      coupon: null,
+        if (coupon.endDate && coupon.endDate < now) {
+          throw new Error(
+            `Coupon has expired on ${coupon.endDate.toLocaleDateString()}`,
+          );
+        }
 
-      totalAmount: 0,
+        /*
+         * =====================================================
+         * APPLICABLE CHECK
+         *
+         * Recharge coupons should contain:
+         *
+         * recharge
+         * recharges
+         * both
+         *
+         * Empty applicable is also allowed because the
+         * existing service resolver treats empty value
+         * as unrestricted.
+         * =====================================================
+         */
+        const applicable = coupon.applicable?.toLowerCase();
 
-      discount: 0,
+        if (
+          applicable &&
+          applicable !== "recharge" &&
+          applicable !== "recharges" &&
+          applicable !== "both"
+        ) {
+          throw new Error("This coupon is not applicable for recharge");
+        }
 
-      cashback: 0,
+        /*
+         * =====================================================
+         * GLOBAL REDEMPTION LIMIT
+         * =====================================================
+         */
+        if (
+          coupon.redeemLimit !== null &&
+          coupon.redeemLimit !== undefined &&
+          Number(coupon.usedCount || 0) >= Number(coupon.redeemLimit)
+        ) {
+          throw new Error("Coupon redemption limit has been reached");
+        }
 
-      payableAmount: 0,
+        /*
+         * =====================================================
+         * MINIMUM ORDER AMOUNT
+         *
+         * Check against ORIGINAL recharge price.
+         *
+         * GST is NOT included.
+         * =====================================================
+         */
+        if (
+          coupon.minOrderAmount !== null &&
+          coupon.minOrderAmount !== undefined &&
+          originalAmount < Number(coupon.minOrderAmount)
+        ) {
+          throw new Error(
+            `Minimum order amount of ₹${coupon.minOrderAmount} is required for this coupon`,
+          );
+        }
 
-      gstAmount: 0,
+        /*
+         * =====================================================
+         * CHECK USER REDEMPTION
+         *
+         * User cannot redeem the same coupon again.
+         * =====================================================
+         */
+        const alreadyRedeemed = await prisma.couponRedemption.findFirst({
+          where: {
+            couponId: coupon.id,
+            userId: userId,
+          },
+        });
 
-      originalAmount: 0,
+        if (alreadyRedeemed) {
+          throw new Error("You have already used this coupon");
+        }
 
-      discountedPrice: 0,
-    };
-  }
-},
+        /*
+         * =====================================================
+         * CALCULATE DISCOUNT
+         * =====================================================
+         */
+        let discount = 0;
 
-   verifyServiceCoupon: async (_, { input }, context) => {
-  try {
-    /*
-     * =====================================================
-     * AUTHENTICATION
-     * =====================================================
-     */
-    if (!context.user) {
-      throw new Error(
-        "Unauthorized: Please login to apply coupon"
-      );
-    }
+        let cashback = 0;
 
-    const userId = context.user.id;
+        /*
+         * =====================================================
+         * DISCOUNT COUPON
+         * =====================================================
+         */
+        if (coupon.type === "DISCOUNT") {
+          /*
+           * Percentage discount
+           */
+          if (coupon.percentage !== null && coupon.percentage !== undefined) {
+            discount = (originalAmount * Number(coupon.percentage)) / 100;
+          }
 
-    const {
-      bookingId,
-      couponCode,
-    } = input;
+          /*
+           * Flat discount
+           */
+          if (coupon.flatAmount !== null && coupon.flatAmount !== undefined) {
+            discount = Number(coupon.flatAmount);
+          }
 
-    /*
-     * =====================================================
-     * VALIDATE INPUT
-     * =====================================================
-     */
-    if (!bookingId) {
-      throw new Error("Booking ID is required");
-    }
+          /*
+           * Maximum discount
+           */
+          if (
+            coupon.maxDiscount !== null &&
+            coupon.maxDiscount !== undefined &&
+            discount > Number(coupon.maxDiscount)
+          ) {
+            discount = Number(coupon.maxDiscount);
+          }
 
-    if (!couponCode) {
-      throw new Error("Coupon code is required");
-    }
+          /*
+           * Discount cannot exceed recharge price.
+           */
+          discount = Math.min(discount, originalAmount);
+        }
 
-    /*
-     * =====================================================
-     * GET BOOKING
-     * =====================================================
-     */
-    const booking = await prisma.serviceBooking.findUnique({
-      where: {
-        id: bookingId,
-      },
-      include: {
-        service: true,
-        astrologer: true,
-      },
-    });
+        /*
+         * =====================================================
+         * CASHBACK
+         * =====================================================
+         */
+        if (coupon.type === "CASHBACK") {
+          cashback = (originalAmount * Number(coupon.percentage || 0)) / 100;
 
-    if (!booking) {
-      throw new Error("Booking not found");
-    }
+          /*
+           * Maximum cashback
+           */
+          if (
+            coupon.maxDiscount !== null &&
+            coupon.maxDiscount !== undefined &&
+            cashback > Number(coupon.maxDiscount)
+          ) {
+            cashback = Number(coupon.maxDiscount);
+          }
+        }
 
-    /*
-     * =====================================================
-     * CHECK BOOKING OWNER
-     * =====================================================
-     */
-    if (booking.userId !== userId) {
-      throw new Error(
-        "You are not authorized to apply coupon on this booking"
-      );
-    }
+        /*
+         * =====================================================
+         * PRICE AFTER DISCOUNT
+         * =====================================================
+         */
+        const discountedPrice = originalAmount - discount;
 
-    /*
-     * =====================================================
-     * CHECK PAYMENT STATUS
-     * =====================================================
-     */
-    if (
-      booking.status === "PAID" ||
-      booking.status === "COMPLETED"
-    ) {
-      throw new Error(
-        "Cannot apply coupon on already paid booking"
-      );
-    }
+        /*
+         * =====================================================
+         * GST
+         *
+         * GST is calculated AFTER discount.
+         * =====================================================
+         */
+        const gstAmount = (discountedPrice * 18) / 100;
 
-    /*
-     * =====================================================
-     * ORIGINAL PRODUCT / SERVICE AMOUNT
-     *
-     * IMPORTANT:
-     * Coupon is applied BEFORE GST.
-     * =====================================================
-     */
-    const originalAmount = Number(booking.amount || 0);
+        /*
+         * =====================================================
+         * FINAL PAYABLE
+         * =====================================================
+         */
+        const payableAmount = discountedPrice + gstAmount;
 
-    if (originalAmount <= 0) {
-      throw new Error(
-        "Invalid booking amount"
-      );
-    }
+        /*
+         * =====================================================
+         * RESPONSE
+         * =====================================================
+         */
+        return {
+          success: true,
 
-    /*
-     * =====================================================
-     * FIND COUPON
-     * =====================================================
-     */
-    const normalizedCode =
-      couponCode.trim().toUpperCase();
+          message: "Coupon verified successfully",
 
-    const coupon = await prisma.coupon.findUnique({
-      where: {
-        code: normalizedCode,
-      },
-    });
+          coupon: {
+            ...coupon,
 
-    if (!coupon) {
-      throw new Error(
-        "Invalid coupon code"
-      );
-    }
+            /*
+             * Prisma Decimal -> Number
+             */
+            flatAmount:
+              coupon.flatAmount !== null ? Number(coupon.flatAmount) : null,
 
-    /*
-     * =====================================================
-     * COUPON STATUS
-     * =====================================================
-     */
-    if (!coupon.status) {
-      throw new Error(
-        "Coupon is currently inactive"
-      );
-    }
+            maxDiscount:
+              coupon.maxDiscount !== null ? Number(coupon.maxDiscount) : null,
 
-    /*
-     * =====================================================
-     * COUPON VISIBILITY
-     * =====================================================
-     */
-    if (coupon.visibility !== "VISIBLE") {
-      throw new Error(
-        "Coupon is currently not available"
-      );
-    }
+            minOrderAmount:
+              coupon.minOrderAmount !== null
+                ? Number(coupon.minOrderAmount)
+                : null,
+          },
 
-    /*
-     * =====================================================
-     * COUPON DATE VALIDATION
-     * =====================================================
-     */
-    const now = new Date();
+          /*
+           * Original recharge price
+           */
+          originalAmount: Math.round(originalAmount * 100) / 100,
 
-    if (
-      coupon.startDate &&
-      coupon.startDate > now
-    ) {
-      throw new Error(
-        `Coupon is not active yet. Valid from ${coupon.startDate.toLocaleDateString()}`
-      );
-    }
+          /*
+           * Coupon discount
+           */
+          discount: Math.round(discount * 100) / 100,
 
-    if (
-      coupon.endDate &&
-      coupon.endDate < now
-    ) {
-      throw new Error(
-        `Coupon has expired on ${coupon.endDate.toLocaleDateString()}`
-      );
-    }
+          /*
+           * Price after coupon
+           */
+          discountedPrice: Math.round(discountedPrice * 100) / 100,
 
-    /*
-     * =====================================================
-     * APPLICABLE CHECK
-     *
-     * Database contains:
-     *
-     * services
-     *
-     * So normalize before checking.
-     * =====================================================
-     */
-    const applicable =
-      coupon.applicable?.toLowerCase();
+          /*
+           * GST
+           */
+          gstAmount: Math.round(gstAmount * 100) / 100,
 
-    if (
-      applicable &&
-      applicable !== "service" &&
-      applicable !== "services" &&
-      applicable !== "both"
-    ) {
-      throw new Error(
-        "This coupon is not applicable for services"
-      );
-    }
+          /*
+           * Cashback
+           */
+          cashback: Math.round(cashback * 100) / 100,
 
-    /*
-     * =====================================================
-     * GLOBAL REDEMPTION LIMIT
-     * =====================================================
-     */
-    if (
-      coupon.redeemLimit !== null &&
-      coupon.redeemLimit !== undefined &&
-      Number(coupon.usedCount || 0) >=
-        Number(coupon.redeemLimit)
-    ) {
-      throw new Error(
-        "Coupon redemption limit has been reached"
-      );
-    }
+          /*
+           * Final payable amount
+           */
+          payableAmount: Math.round(payableAmount * 100) / 100,
+        };
+      } catch (error) {
+        console.error("Recharge coupon verification error:", error);
 
-    /*
-     * =====================================================
-     * MINIMUM ORDER AMOUNT
-     *
-     * IMPORTANT:
-     * Check ORIGINAL amount.
-     * GST is NOT included.
-     * =====================================================
-     */
-    if (
-      coupon.minOrderAmount !== null &&
-      coupon.minOrderAmount !== undefined &&
-      originalAmount <
-        Number(coupon.minOrderAmount)
-    ) {
-      throw new Error(
-        `Minimum order amount of ₹${coupon.minOrderAmount} is required for this coupon`
-      );
-    }
+        return {
+          success: false,
 
-    /*
-     * =====================================================
-     * CHECK USER REDEMPTION
-     *
-     * CouponRedemption is the source for checking
-     * whether this user already redeemed this coupon.
-     * =====================================================
-     */
-    const alreadyRedeemed =
-      await prisma.couponRedemption.findFirst({
-        where: {
-          couponId: coupon.id,
-          userId: userId,
-        },
-      });
+          message: error.message || "Failed to verify recharge coupon",
 
-    if (alreadyRedeemed) {
-      throw new Error(
-        "You have already used this coupon"
-      );
-    }
+          coupon: null,
 
-    /*
-     * =====================================================
-     * CALCULATE DISCOUNT
-     * =====================================================
-     */
-    let discount = 0;
-    let cashback = 0;
+          totalAmount: 0,
 
-    /*
-     * =====================================================
-     * DISCOUNT COUPON
-     * =====================================================
-     */
-    if (coupon.type === "DISCOUNT") {
+          discount: 0,
 
-      /*
-       * Percentage discount is calculated
-       * on ORIGINAL PRODUCT PRICE.
-       */
-      if (
-        coupon.percentage !== null &&
-        coupon.percentage !== undefined
-      ) {
-        discount =
-          (
-            originalAmount *
-            Number(coupon.percentage)
-          ) / 100;
+          cashback: 0,
+
+          payableAmount: 0,
+
+          gstAmount: 0,
+
+          originalAmount: 0,
+
+          discountedPrice: 0,
+        };
       }
+    },
 
-      /*
-       * Flat discount
-       */
-      if (
-        coupon.flatAmount !== null &&
-        coupon.flatAmount !== undefined
-      ) {
-        discount =
-          Number(coupon.flatAmount);
+    verifyServiceCoupon: async (_, { input }, context) => {
+      try {
+        /*
+         * =====================================================
+         * AUTHENTICATION
+         * =====================================================
+         */
+        if (!context.user) {
+          throw new Error("Unauthorized: Please login to apply coupon");
+        }
+
+        const userId = context.user.id;
+
+        const { bookingId, couponCode } = input;
+
+        /*
+         * =====================================================
+         * VALIDATE INPUT
+         * =====================================================
+         */
+        if (!bookingId) {
+          throw new Error("Booking ID is required");
+        }
+
+        if (!couponCode) {
+          throw new Error("Coupon code is required");
+        }
+
+        /*
+         * =====================================================
+         * GET BOOKING
+         * =====================================================
+         */
+        const booking = await prisma.serviceBooking.findUnique({
+          where: {
+            id: bookingId,
+          },
+          include: {
+            service: true,
+            astrologer: true,
+          },
+        });
+
+        if (!booking) {
+          throw new Error("Booking not found");
+        }
+
+        /*
+         * =====================================================
+         * CHECK BOOKING OWNER
+         * =====================================================
+         */
+        if (booking.userId !== userId) {
+          throw new Error(
+            "You are not authorized to apply coupon on this booking",
+          );
+        }
+
+        /*
+         * =====================================================
+         * CHECK PAYMENT STATUS
+         * =====================================================
+         */
+        if (booking.status === "PAID" || booking.status === "COMPLETED") {
+          throw new Error("Cannot apply coupon on already paid booking");
+        }
+
+        /*
+         * =====================================================
+         * ORIGINAL PRODUCT / SERVICE AMOUNT
+         *
+         * IMPORTANT:
+         * Coupon is applied BEFORE GST.
+         * =====================================================
+         */
+        const originalAmount = Number(booking.amount || 0);
+
+        if (originalAmount <= 0) {
+          throw new Error("Invalid booking amount");
+        }
+
+        /*
+         * =====================================================
+         * FIND COUPON
+         * =====================================================
+         */
+        const normalizedCode = couponCode.trim().toUpperCase();
+
+        const coupon = await prisma.coupon.findUnique({
+          where: {
+            code: normalizedCode,
+          },
+        });
+
+        if (!coupon) {
+          throw new Error("Invalid coupon code");
+        }
+
+        /*
+         * =====================================================
+         * COUPON STATUS
+         * =====================================================
+         */
+        if (!coupon.status) {
+          throw new Error("Coupon is currently inactive");
+        }
+
+        /*
+         * =====================================================
+         * COUPON VISIBILITY
+         * =====================================================
+         */
+        if (coupon.visibility !== "VISIBLE") {
+          throw new Error("Coupon is currently not available");
+        }
+
+        /*
+         * =====================================================
+         * COUPON DATE VALIDATION
+         * =====================================================
+         */
+        const now = new Date();
+
+        if (coupon.startDate && coupon.startDate > now) {
+          throw new Error(
+            `Coupon is not active yet. Valid from ${coupon.startDate.toLocaleDateString()}`,
+          );
+        }
+
+        if (coupon.endDate && coupon.endDate < now) {
+          throw new Error(
+            `Coupon has expired on ${coupon.endDate.toLocaleDateString()}`,
+          );
+        }
+
+        /*
+         * =====================================================
+         * APPLICABLE CHECK
+         *
+         * Database contains:
+         *
+         * services
+         *
+         * So normalize before checking.
+         * =====================================================
+         */
+        const applicable = coupon.applicable?.toLowerCase();
+
+        if (
+          applicable &&
+          applicable !== "service" &&
+          applicable !== "services" &&
+          applicable !== "both"
+        ) {
+          throw new Error("This coupon is not applicable for services");
+        }
+
+        /*
+         * =====================================================
+         * GLOBAL REDEMPTION LIMIT
+         * =====================================================
+         */
+        if (
+          coupon.redeemLimit !== null &&
+          coupon.redeemLimit !== undefined &&
+          Number(coupon.usedCount || 0) >= Number(coupon.redeemLimit)
+        ) {
+          throw new Error("Coupon redemption limit has been reached");
+        }
+
+        /*
+         * =====================================================
+         * MINIMUM ORDER AMOUNT
+         *
+         * IMPORTANT:
+         * Check ORIGINAL amount.
+         * GST is NOT included.
+         * =====================================================
+         */
+        if (
+          coupon.minOrderAmount !== null &&
+          coupon.minOrderAmount !== undefined &&
+          originalAmount < Number(coupon.minOrderAmount)
+        ) {
+          throw new Error(
+            `Minimum order amount of ₹${coupon.minOrderAmount} is required for this coupon`,
+          );
+        }
+
+        /*
+         * =====================================================
+         * CHECK USER REDEMPTION
+         *
+         * CouponRedemption is the source for checking
+         * whether this user already redeemed this coupon.
+         * =====================================================
+         */
+        const alreadyRedeemed = await prisma.couponRedemption.findFirst({
+          where: {
+            couponId: coupon.id,
+            userId: userId,
+          },
+        });
+
+        if (alreadyRedeemed) {
+          throw new Error("You have already used this coupon");
+        }
+
+        /*
+         * =====================================================
+         * CALCULATE DISCOUNT
+         * =====================================================
+         */
+        let discount = 0;
+        let cashback = 0;
+
+        /*
+         * =====================================================
+         * DISCOUNT COUPON
+         * =====================================================
+         */
+        if (coupon.type === "DISCOUNT") {
+          /*
+           * Percentage discount is calculated
+           * on ORIGINAL PRODUCT PRICE.
+           */
+          if (coupon.percentage !== null && coupon.percentage !== undefined) {
+            discount = (originalAmount * Number(coupon.percentage)) / 100;
+          }
+
+          /*
+           * Flat discount
+           */
+          if (coupon.flatAmount !== null && coupon.flatAmount !== undefined) {
+            discount = Number(coupon.flatAmount);
+          }
+
+          /*
+           * Maximum discount
+           */
+          if (
+            coupon.maxDiscount !== null &&
+            coupon.maxDiscount !== undefined &&
+            discount > Number(coupon.maxDiscount)
+          ) {
+            discount = Number(coupon.maxDiscount);
+          }
+
+          /*
+           * Discount cannot exceed original price
+           */
+          discount = Math.min(discount, originalAmount);
+        }
+
+        /*
+         * =====================================================
+         * CASHBACK
+         * =====================================================
+         */
+        if (coupon.type === "CASHBACK") {
+          cashback = (originalAmount * Number(coupon.percentage || 0)) / 100;
+
+          /*
+           * Maximum cashback
+           */
+          if (
+            coupon.maxDiscount !== null &&
+            coupon.maxDiscount !== undefined &&
+            cashback > Number(coupon.maxDiscount)
+          ) {
+            cashback = Number(coupon.maxDiscount);
+          }
+        }
+
+        /*
+         * =====================================================
+         * PRICE AFTER DISCOUNT
+         * =====================================================
+         */
+        const discountedPrice = originalAmount - discount;
+
+        /*
+         * =====================================================
+         * GST
+         *
+         * GST is calculated AFTER discount.
+         * =====================================================
+         */
+        const gstAmount = (discountedPrice * 18) / 100;
+
+        /*
+         * =====================================================
+         * FINAL PAYABLE
+         * =====================================================
+         */
+        const payableAmount = discountedPrice + gstAmount;
+
+        /*
+         * =====================================================
+         * RESPONSE
+         * =====================================================
+         */
+        return {
+          success: true,
+
+          message: "Coupon verified successfully",
+
+          coupon: {
+            ...coupon,
+
+            flatAmount:
+              coupon.flatAmount !== null ? Number(coupon.flatAmount) : null,
+
+            maxDiscount:
+              coupon.maxDiscount !== null ? Number(coupon.maxDiscount) : null,
+
+            minOrderAmount:
+              coupon.minOrderAmount !== null
+                ? Number(coupon.minOrderAmount)
+                : null,
+          },
+
+          /*
+           * Original product price
+           */
+          originalAmount: Math.round(originalAmount * 100) / 100,
+
+          /*
+           * Coupon discount
+           */
+          discount: Math.round(discount * 100) / 100,
+
+          /*
+           * Price after coupon
+           */
+          discountedPrice: Math.round(discountedPrice * 100) / 100,
+
+          /*
+           * GST
+           */
+          gstAmount: Math.round(gstAmount * 100) / 100,
+
+          /*
+           * Cashback
+           */
+          cashback: Math.round(cashback * 100) / 100,
+
+          /*
+           * Final payable
+           */
+          payableAmount: Math.round(payableAmount * 100) / 100,
+        };
+      } catch (error) {
+        console.error("Coupon verification error:", error);
+
+        return {
+          success: false,
+
+          message: error.message || "Failed to verify coupon",
+
+          coupon: null,
+
+          totalAmount: 0,
+
+          discount: 0,
+
+          cashback: 0,
+
+          payableAmount: 0,
+
+          gstAmount: 0,
+
+          originalAmount: 0,
+
+          discountedPrice: 0,
+        };
       }
-
-      /*
-       * Maximum discount
-       */
-      if (
-        coupon.maxDiscount !== null &&
-        coupon.maxDiscount !== undefined &&
-        discount >
-          Number(coupon.maxDiscount)
-      ) {
-        discount =
-          Number(coupon.maxDiscount);
-      }
-
-      /*
-       * Discount cannot exceed original price
-       */
-      discount = Math.min(
-        discount,
-        originalAmount
-      );
-    }
-
-    /*
-     * =====================================================
-     * CASHBACK
-     * =====================================================
-     */
-    if (coupon.type === "CASHBACK") {
-
-      cashback =
-        (
-          originalAmount *
-          Number(coupon.percentage || 0)
-        ) / 100;
-
-      /*
-       * Maximum cashback
-       */
-      if (
-        coupon.maxDiscount !== null &&
-        coupon.maxDiscount !== undefined &&
-        cashback >
-          Number(coupon.maxDiscount)
-      ) {
-        cashback =
-          Number(coupon.maxDiscount);
-      }
-    }
-
-    /*
-     * =====================================================
-     * PRICE AFTER DISCOUNT
-     * =====================================================
-     */
-    const discountedPrice =
-      originalAmount - discount;
-
-    /*
-     * =====================================================
-     * GST
-     *
-     * GST is calculated AFTER discount.
-     * =====================================================
-     */
-    const gstAmount =
-      (discountedPrice * 18) / 100;
-
-    /*
-     * =====================================================
-     * FINAL PAYABLE
-     * =====================================================
-     */
-    const payableAmount =
-      discountedPrice + gstAmount;
-
-    /*
-     * =====================================================
-     * RESPONSE
-     * =====================================================
-     */
-    return {
-      success: true,
-
-      message:
-        "Coupon verified successfully",
-
-      coupon: {
-        ...coupon,
-
-        flatAmount:
-          coupon.flatAmount !== null
-            ? Number(coupon.flatAmount)
-            : null,
-
-        maxDiscount:
-          coupon.maxDiscount !== null
-            ? Number(coupon.maxDiscount)
-            : null,
-
-        minOrderAmount:
-          coupon.minOrderAmount !== null
-            ? Number(coupon.minOrderAmount)
-            : null,
-      },
-
-      /*
-       * Original product price
-       */
-      originalAmount:
-        Math.round(originalAmount * 100) / 100,
-
-      /*
-       * Coupon discount
-       */
-      discount:
-        Math.round(discount * 100) / 100,
-
-      /*
-       * Price after coupon
-       */
-      discountedPrice:
-        Math.round(
-          discountedPrice * 100
-        ) / 100,
-
-      /*
-       * GST
-       */
-      gstAmount:
-        Math.round(gstAmount * 100) / 100,
-
-      /*
-       * Cashback
-       */
-      cashback:
-        Math.round(cashback * 100) / 100,
-
-      /*
-       * Final payable
-       */
-      payableAmount:
-        Math.round(
-          payableAmount * 100
-        ) / 100,
-    };
-
-  } catch (error) {
-
-    console.error(
-      "Coupon verification error:",
-      error
-    );
-
-    return {
-      success: false,
-
-      message:
-        error.message ||
-        "Failed to verify coupon",
-
-      coupon: null,
-
-      totalAmount: 0,
-
-      discount: 0,
-
-      cashback: 0,
-
-      payableAmount: 0,
-
-      gstAmount: 0,
-
-      originalAmount: 0,
-
-      discountedPrice: 0,
-    };
-  }
-},
+    },
     createOrder: async (_, { input }, context) => {
       try {
         // ======================
@@ -5289,7 +5087,7 @@ module.exports = {
             id: bookingId,
           },
         });
-       console.log("couponCode-------:",couponCode);
+        console.log("couponCode-------:", couponCode);
         if (!booking) {
           throw new Error("Booking not found");
         }
@@ -5342,7 +5140,7 @@ module.exports = {
           //--------------------------------------
           // DISCOUNT
           //--------------------------------------
-          console.log("coupantype-------------:",coupon.type);
+          console.log("coupantype-------------:", coupon.type);
           if (coupon.type === "DISCOUNT") {
             discount = (totalAmount * (coupon.percentage || 0)) / 100;
 
@@ -5352,7 +5150,11 @@ module.exports = {
 
             discount = Math.min(discount, totalAmount);
 
-            payableAmount = totalAmount - discount;
+            const amountAfterDiscount = totalAmount - discount;
+            const gstAmount = (amountAfterDiscount * 18) / 100;
+            payableAmount = amountAfterDiscount + gstAmount;
+
+            console.log(payableAmount); // 1062
           }
 
           //--------------------------------------
