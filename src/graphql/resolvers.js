@@ -5184,6 +5184,7 @@ module.exports = {
             serviceId: booking.serviceId,
             astrologerId: booking.astrologerId,
             userId,
+            coins:amount,
 
             serviceType: "SERVICE",
 
