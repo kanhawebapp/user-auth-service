@@ -5101,8 +5101,8 @@ module.exports = {
         let coupon = null;
         let discount = 0;
         let cashback = 0;
-
-        let payableAmount = totalAmount;
+        const gst_Amount = (totalAmount * 18) / 100;
+        let payableAmount = totalAmount+gst_Amount;
 
         // =====================================
         // APPLY COUPON
