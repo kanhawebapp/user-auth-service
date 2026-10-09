@@ -2937,31 +2937,20 @@ module.exports = {
   }
     },
     getLiveGifts: async (_, __, { user, prisma }) => {
-      try {
-        if (!user) {
-          throw new Error("Unauthorized");
-        }
+  if (!user) {
+    throw new Error("Unauthorized");
+  }
 
-        const gifts = await prisma.liveGift.findMany({
-          where: {
-            isActive: true,
-          },
-          select: {
-            id: true,
-            name: true,
-            icon: true,
-            price: true,
-          },
-          orderBy: {
-            price: "asc",
-          },
-        });
-
-        return gifts;
-      } catch (error) {
-        console.error("Error fetching live gifts:", error);
-        throw new Error(error.message || "Failed to fetch live gifts");
-      }
+  return prisma.liveGift.findMany({
+    where: { isActive: true },
+    select: {
+      id: true,
+      name: true,
+      icon: true,
+      price: true,
+    },
+    orderBy: { price: "asc" },
+  });
     },
 
     getCoupons: async (_, __, context) => {

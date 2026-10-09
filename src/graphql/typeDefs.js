@@ -1544,7 +1544,7 @@ type VerifyServiceCouponResponse {
     ): AstrologerReviewResponse!
      getSimilarAstrologers(astrologerId: ID!): [Astrologer!]!
 
-     getLiveGifts: [LiveGiftType!]!
+     getLiveGifts: [LiveGift!]!
   }
 
   type Mutation {
@@ -1621,7 +1621,7 @@ type VerifyServiceCouponResponse {
     quantity: Int!
   ): SendLiveGiftResponse!
   
-  getLiveGifts: [LiveGift!]!
+ 
 
   }
 `;
