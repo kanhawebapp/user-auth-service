@@ -1605,6 +1605,39 @@ enum LiveStatus {
   ENDED
 }
 
+model LiveGift {
+  id        String   @id @default(uuid())
+  name      String
+  icon      String
+  price     Int
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  transactions LiveGiftTransaction[]
+}
+
+model LiveGiftTransaction {
+  id          String   @id @default(uuid())
+
+  streamId    String
+  senderId    String
+  astrologerId String
+  giftId      String
+
+  quantity    Int      @default(1)
+  totalCoins  Int
+
+  status      String   @default("SUCCESS")
+  createdAt   DateTime @default(now())
+
+  gift        LiveGift @relation(fields: [giftId], references: [id])
+
+  @@index([streamId, createdAt])
+  @@index([senderId, createdAt])
+  @@index([astrologerId, createdAt])
+}
+
 
 
 model CallRecording {
@@ -1849,4 +1882,97 @@ sessionDate DateTime
   @@index([status])
   @@index([requestedByStaffId])
   @@index([createdAt])
+}
+
+//-----------------puja tables-------------------
+//-----------------puja tables-------------------
+
+model PujaService {
+  id              String   @id @default(uuid())
+
+  // Basic Information
+  title           String
+  slug            String   @unique
+  image           String
+  category        String?
+
+  // Description
+  shortDescription String?
+  description      String?  @db.Text
+  benefits         String?  @db.Text
+  howToPerform     String?  @db.Text
+  packaging        String?  @db.Text
+
+  // Pricing
+  price            Float
+  mrp              Float?
+  discount         Float?
+
+  // Social Proof
+  customersCount   Int      @default(0)
+  rating           Float    @default(0)
+
+  // Relations
+  mantraOptions    PujaMantraOption[]
+  faqs             PujaFAQ[]
+  reviews          PujaReview[]
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([category])
+  @@index([createdAt])
+}
+
+model PujaMantraOption {
+  id        String      @id @default(uuid())
+  name      String
+
+  pujaId    String
+  puja      PujaService @relation(fields: [pujaId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime    @default(now())
+
+  @@index([pujaId])
+}
+
+model PujaFAQ {
+  id        String      @id @default(uuid())
+  question  String
+  answer    String      @db.Text
+
+  pujaId    String
+  puja      PujaService @relation(fields: [pujaId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  @@index([pujaId])
+}
+
+model PujaReview {
+  id        String           @id @default(uuid())
+
+  pujaId    String
+  puja      PujaService      @relation(fields: [pujaId], references: [id], onDelete: Cascade)
+
+  userId    String?
+  userName  String
+
+  rating    Int
+  comment   String           @db.Text
+  status    PujaReviewStatus @default(PENDING)
+
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  @@index([pujaId])
+  @@index([userId])
+  @@index([status])
+}
+
+enum PujaReviewStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }

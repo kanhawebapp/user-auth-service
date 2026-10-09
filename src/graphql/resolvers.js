@@ -19,6 +19,9 @@ const razorpay = new Razorpay({
   key_secret: process.env.RAZORPAY_KEY_SECRET,
 });
 const {
+  sendAgoraChatRoomGiftNotification,
+} = require("../utils/agoraToken");
+const {
   generateRtcToken,
   createAgoraChatUser,
   generateChatToken,
@@ -2872,65 +2875,95 @@ module.exports = {
     },
 
     joinLive: async (_, { channelName }, { user }) => {
+  try {
+    if (!user) {
+      throw new Error("Unauthorized");
+    }
+
+    const stream = await prisma.liveStream.findFirst({
+      where: {
+        channelName,
+        status: "LIVE",
+      },
+    });
+
+    if (!stream) {
+      throw new Error("Live stream not found");
+    }
+
+    if (!stream.chatRoomId) {
+      throw new Error(
+        "Chat room is not configured for this live stream"
+      );
+    }
+
+    const uid = Math.floor(
+      Math.random() * 1000000
+    ) + 1;
+
+    const chatUserId = `user_${user.id}`;
+
+    await createAgoraChatUser(chatUserId);
+
+    const rtcToken = generateRtcToken({
+      channelName,
+      uid,
+      role: "subscriber",
+    });
+
+    const chatToken = await generateChatToken(
+      chatUserId
+    );
+
+    return {
+      appId: process.env.AGORA_APP_ID,
+      channelName,
+      uid,
+      rtcToken,
+      chatUserId,
+      chatToken,
+      chatRoomId: stream.chatRoomId,
+      chatAppKey: process.env.AGORA_CHAT_APP_KEY,
+    };
+  } catch (error) {
+    console.error(
+      "joinLive Error:",
+      error.response?.data || error
+    );
+
+    throw new Error(
+      error.message || "Failed to join live"
+    );
+  }
+    },
+    getLiveGifts: async (_, __, { user, prisma }) => {
       try {
         if (!user) {
           throw new Error("Unauthorized");
         }
 
-        // Find active live
-        const stream = await prisma.liveStream.findFirst({
+        const gifts = await prisma.liveGift.findMany({
           where: {
-            channelName,
-            status: "LIVE",
+            isActive: true,
+          },
+          select: {
+            id: true,
+            name: true,
+            icon: true,
+            price: true,
+          },
+          orderBy: {
+            price: "asc",
           },
         });
 
-        if (!stream) {
-          throw new Error("Live stream not found");
-        }
-
-        // Make sure chat room exists
-        if (!stream.chatRoomId) {
-          throw new Error("Chat room not found for this live stream");
-        }
-
-        // Generate RTC UID
-        const uid = Math.floor(Math.random() * 1000000);
-
-        // RTC Token
-        const rtcToken = generateRtcToken({
-          channelName,
-          uid,
-          role: "subscriber",
-        });
-
-        // Agora Chat username
-        const chatUserId = `user_${user.id}`;
-
-        // Create chat user if not exists
-        await createAgoraChatUser(chatUserId);
-
-        // Generate chat token
-        const chatToken = await generateChatToken(chatUserId);
-
-        const response = {
-          rtcToken,
-          uid,
-          appId: process.env.AGORA_APP_ID,
-          channelName,
-
-          chatUserId,
-          chatToken,
-          chatRoomId: stream.chatRoomId,
-          chatAppKey: process.env.AGORA_CHAT_APP_KEY,
-        };
-
-        return response;
+        return gifts;
       } catch (error) {
-        console.error(error.response?.data || error);
-        throw new Error(error.message || "Failed to join live stream");
+        console.error("Error fetching live gifts:", error);
+        throw new Error(error.message || "Failed to fetch live gifts");
       }
     },
+
     getCoupons: async (_, __, context) => {
       try {
         /*
@@ -5748,6 +5781,260 @@ module.exports = {
         throw new Error(error.message || "Failed to start live");
       }
     },
+
+    
+sendLiveGift: async (_, { streamId, giftId, quantity }, { user }) => {
+  if (!user) {
+    throw new Error("Unauthorized");
+  }
+
+  if (
+    !Number.isInteger(quantity) ||
+    quantity < 1 ||
+    quantity > 100
+  ) {
+    throw new Error("Invalid gift quantity");
+  }
+
+  // 1. Validate the live stream.
+  const stream = await prisma.liveStream.findFirst({
+    where: {
+      id: streamId,
+      status: "LIVE",
+    },
+  });
+
+  if (!stream) {
+    throw new Error("Live stream is not active");
+  }
+
+  if (stream.astrologerId === user.id) {
+    throw new Error(
+      "Astrologers cannot send gifts to their own stream"
+    );
+  }
+
+  if (!stream.chatRoomId) {
+    throw new Error("Live stream Chat room is not configured");
+  }
+
+  // 2. Validate the gift.
+  const gift = await prisma.liveGift.findFirst({
+    where: {
+      id: giftId,
+      isActive: true,
+    },
+  });
+
+  if (!gift) {
+    throw new Error("Gift not found or inactive");
+  }
+
+  const totalCoins = gift.price * quantity;
+
+  if (
+    !Number.isSafeInteger(totalCoins) ||
+    totalCoins <= 0
+  ) {
+    throw new Error("Invalid gift amount");
+  }
+
+  // 3. Read the astrologer's configured gift commission.
+  const commissionConfig =
+    await prisma.astrologerPricing.findUnique({
+      where: {
+        astrologerId_type: {
+          astrologerId: stream.astrologerId,
+          type: "GIFT_COMMISSION",
+        },
+      },
+    });
+
+  const commissionPercent =
+    commissionConfig?.isActive &&
+    commissionConfig.commissionPercent != null
+      ? commissionConfig.commissionPercent
+      : 0;
+
+  if (
+    !Number.isFinite(commissionPercent) ||
+    commissionPercent < 0 ||
+    commissionPercent > 100
+  ) {
+    throw new Error("Invalid astrologer gift commission");
+  }
+
+  // Use whole coins because WalletTransaction.coins is Int.
+  const astrologerCoins = Math.floor(
+    totalCoins * (100 - commissionPercent) / 100
+  );
+
+  const commissionCoins = totalCoins - astrologerCoins;
+
+  // 4. Perform wallet updates and transaction recording atomically.
+  const result = await prisma.$transaction(async (tx) => {
+    // Create wallets if they do not exist yet.
+    await tx.userWallet.upsert({
+      where: {
+        userId: user.id,
+      },
+      create: {
+        userId: user.id,
+        balanceCoins: 0,
+      },
+      update: {},
+    });
+
+    await tx.astrologerWallet.upsert({
+      where: {
+        astrologerId: stream.astrologerId,
+      },
+      create: {
+        astrologerId: stream.astrologerId,
+        balanceCoins: 0,
+      },
+      update: {},
+    });
+
+    // Atomically debit the user only if sufficient coins remain.
+    const debit = await tx.userWallet.updateMany({
+      where: {
+        userId: user.id,
+        balanceCoins: {
+          gte: totalCoins,
+        },
+      },
+      data: {
+        balanceCoins: {
+          decrement: totalCoins,
+        },
+      },
+    });
+
+    if (debit.count !== 1) {
+      throw new Error("Insufficient wallet balance");
+    }
+
+    const userWallet = await tx.userWallet.findUniqueOrThrow({
+      where: {
+        userId: user.id,
+      },
+    });
+
+    // Credit the astrologer with earnings after commission.
+    await tx.astrologerWallet.update({
+      where: {
+        astrologerId: stream.astrologerId,
+      },
+      data: {
+        balanceCoins: {
+          increment: astrologerCoins,
+        },
+        totalEarned: {
+          increment: astrologerCoins,
+        },
+        totalCommission: {
+          increment: commissionCoins,
+        },
+      },
+    });
+
+    const astrologerWallet =
+      await tx.astrologerWallet.findUniqueOrThrow({
+        where: {
+          astrologerId: stream.astrologerId,
+        },
+      });
+
+    // Record user's wallet debit.
+    await tx.walletTransaction.create({
+      data: {
+        userWalletId: userWallet.id,
+        type: "DEBIT",
+        coins: totalCoins,
+        updatedBalance: userWallet.balanceCoins,
+        description:
+          `Live gift: ${gift.name} x${quantity}`,
+      },
+    });
+
+    // Record astrologer's wallet credit.
+    if (astrologerCoins > 0) {
+      await tx.walletTransaction.create({
+        data: {
+          astrologerWalletId: astrologerWallet.id,
+          type: "CREDIT",
+          coins: astrologerCoins,
+          updatedBalance: astrologerWallet.balanceCoins,
+          description:
+            `Live gift earnings: ${gift.name} x${quantity}`,
+        },
+      });
+    }
+
+    // Record the live gift transaction.
+    const giftTransaction =
+      await tx.liveGiftTransaction.create({
+        data: {
+          streamId: stream.id,
+          senderId: user.id,
+          astrologerId: stream.astrologerId,
+          giftId: gift.id,
+          quantity,
+          totalCoins,
+          status: "SUCCESS",
+        },
+      });
+
+    return {
+      giftTransaction,
+      userBalance: userWallet.balanceCoins,
+      astrologerBalance: astrologerWallet.balanceCoins,
+      totalCoins,
+      astrologerCoins,
+      commissionCoins,
+    };
+  });
+
+  // 5. Notify the Agora Chat room after the DB transaction commits.
+  // Chat failure must not reverse the wallet transaction.
+  try {
+    await sendAgoraChatRoomGiftNotification({
+      chatRoomId: stream.chatRoomId,
+
+      // IMPORTANT: This assumes Agora Chat users are registered
+      // using the same ID as the authenticated user ID.
+      senderUsername: user.id,
+
+      senderId: user.id,
+      giftName: gift.name,
+      icon: gift.icon,
+      quantity,
+      totalCoins,
+    });
+  } catch (error) {
+    console.error(
+      "Failed to send Agora gift notification:",
+      error.response?.data || error.message
+    );
+  }
+
+  return {
+    success: true,
+    message: "Gift sent successfully",
+    giftId: gift.id,
+    giftName: gift.name,
+    icon: gift.icon,
+    quantity,
+    totalCoins,
+    astrologerCoins: result.astrologerCoins,
+    commissionCoins: result.commissionCoins,
+    userBalance: result.userBalance,
+    astrologerBalance: result.astrologerBalance,
+    transactionId: result.giftTransaction.id,
+  };
+},
+
 
     softDeleteUser: async (_, __, context) => {
       try {

@@ -1425,6 +1425,21 @@ type VerifyServiceCouponResponse {
   rechargePackId: ID!
   couponCode: String!
 }
+  type SendLiveGiftResponse {
+  success: Boolean!
+  transactionId: ID!
+  giftName: String!
+  giftIcon: String!
+  quantity: Int!
+  totalCoins: Int!
+}
+  #-------------------live gift----------
+  type LiveGift {
+  id: ID!
+  name: String!
+  icon: String!
+  price: Int!
+}
   
   type Query {
    getPaymentInvoice(transactionId: ID!): PaymentInvoice
@@ -1528,6 +1543,8 @@ type VerifyServiceCouponResponse {
       limit: Int
     ): AstrologerReviewResponse!
      getSimilarAstrologers(astrologerId: ID!): [Astrologer!]!
+
+     getLiveGifts: [LiveGiftType!]!
   }
 
   type Mutation {
@@ -1597,5 +1614,14 @@ type VerifyServiceCouponResponse {
   ): ProfileImageUploadResponse!
 
   softDeleteUser: SoftDeleteUserResponse!
+
+  sendLiveGift(
+    streamId: ID!
+    giftId: ID!
+    quantity: Int!
+  ): SendLiveGiftResponse!
+  
+  getLiveGifts: [LiveGift!]!
+
   }
 `;
