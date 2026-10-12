@@ -2874,7 +2874,7 @@ module.exports = {
       }
     },
 
-    joinLive: async (_, { channelName }, { user }) => {
+joinLive: async (_, { channelName }, { user }) => {
   let currentStep = "initialization";
 
   try {
@@ -2885,84 +2885,111 @@ module.exports = {
       throw new Error("Unauthorized: Please log in to watch live");
     }
 
-    if (!channelName) {
-      throw new Error("Channel name is required");
+    if (
+      !channelName ||
+      typeof channelName !== "string" ||
+      !channelName.trim()
+    ) {
+      throw new Error("A valid channel name is required");
     }
 
-    // 2. Find the live stream
+    // 2. Find the active live stream
     currentStep = "find live stream";
 
     const stream = await prisma.liveStream.findFirst({
       where: {
-        channelName,
+        channelName: channelName.trim(),
         status: "LIVE",
       },
     });
 
     if (!stream) {
-      throw new Error("Live stream not found or has already ended");
+      throw new Error(
+        "Live stream not found or has already ended",
+      );
     }
 
     if (!stream.chatRoomId) {
-      throw new Error("Chat room is not configured for this live stream");
+      throw new Error(
+        "Chat room is not configured for this live stream",
+      );
     }
 
     // 3. Validate Agora RTC configuration
     currentStep = "validate Agora RTC configuration";
 
-    if (
-      !process.env.AGORA_APP_ID?.trim() ||
-      !process.env.AGORA_APP_CERTIFICATE?.trim()
-    ) {
-      throw new Error("Agora RTC configuration is missing");
+    const appId = process.env.AGORA_APP_ID?.trim();
+    const appCertificate =
+      process.env.AGORA_APP_CERTIFICATE?.trim();
+
+    if (!appId || !appCertificate) {
+      throw new Error(
+        "Agora RTC configuration is missing. Check AGORA_APP_ID and AGORA_APP_CERTIFICATE.",
+      );
     }
 
-    // 4. Create or verify the Chat user
-    currentStep = "create or verify Agora Chat user";
+    // 4. Validate Agora Chat configuration
+    currentStep = "validate Agora Chat configuration";
 
-    const chatUserId = `user_${user.id}`;
-     console.log("chatUserId-----------:",chatUserId);
-    await createAgoraChatUser(chatUserId);
-
-    // 5. Generate RTC token
-    currentStep = "generate RTC token";
-
-    const uid = Math.floor(Math.random() * 1000000) + 1;
-
-    const rtcToken = generateRtcToken({
-      channelName,
-      uid,
-      role: "subscriber",
-    });
-    console.log("rtcToken----------------:",rtcToken);
-
-    // 6. Generate Agora Chat token
-    currentStep = "generate Agora Chat user token";
-
-    const chatToken = await generateChatToken(chatUserId);
-    console.log("chatToken-------",chatToken);
-
-    // 7. Validate response configuration
-    currentStep = "validate response configuration";
-
-    const appId = process.env.AGORA_APP_ID?.trim();
-    console.log("appId-------------:",appId);
     const chatAppKey =
       process.env.AGORA_CHAT_APP_KEY?.trim();
-      console.log("chatAppKey",chatAppKey);
 
-    if (!appId) {
-      throw new Error("AGORA_APP_ID is missing");
-    }
+    const chatAppId =
+      process.env.AGORA_CHAT_APP_ID?.trim();
+
+    const chatAppCertificate =
+      process.env.AGORA_CHAT_APP_CERTIFICATE?.trim();
 
     if (!chatAppKey) {
       throw new Error("AGORA_CHAT_APP_KEY is missing");
     }
 
-    // 8. Return the data required by the frontend
+    if (!chatAppId || !chatAppCertificate) {
+      throw new Error(
+        "Agora Chat token configuration is missing. Check AGORA_CHAT_APP_ID and AGORA_CHAT_APP_CERTIFICATE.",
+      );
+    }
+
+    // 5. Create or verify the Agora Chat user
+    currentStep = "create or verify Agora Chat user";
+
+    const chatUserId = `user_${user.id}`;
+
+    await createAgoraChatUser(chatUserId);
+
+    // 6. Generate Agora RTC token for the viewer
+    currentStep = "generate RTC token";
+
+    const uid =
+      Math.floor(Math.random() * 1000000) + 1;
+
+    const rtcToken = generateRtcToken({
+      channelName: stream.channelName,
+      uid,
+      role: "subscriber",
+    });
+
+    if (!rtcToken) {
+      throw new Error("Failed to generate Agora RTC token");
+    }
+
+    // 7. Generate Agora Chat user token locally
+    // The updated agoraToken.js uses ChatTokenBuilder.buildUserToken().
+    // It does not make the client_credentials REST request.
+    currentStep = "generate Agora Chat user token";
+
+    const chatToken = await generateChatToken(chatUserId);
+
+    if (!chatToken) {
+      throw new Error("Failed to generate Agora Chat user token");
+    }
+
+    // 8. Return data required by the viewer frontend
+    currentStep = "prepare joinLive response";
+
     return {
       appId,
-      channelName,
+      channelName: stream.channelName,
       uid,
       rtcToken,
       chatUserId,
@@ -2971,7 +2998,7 @@ module.exports = {
       chatAppKey,
     };
   } catch (error) {
-    // Do not log access tokens, passwords, or client secrets.
+    // Never log RTC tokens, Chat tokens, passwords, or certificates.
     console.error("joinLive failed", {
       step: currentStep,
       channelName,
@@ -2980,18 +3007,16 @@ module.exports = {
       agoraError: error.response?.data?.error,
       agoraErrorDescription:
         error.response?.data?.error_description,
-      agoraResponse: error.response?.data
-        ? JSON.stringify(error.response.data)
-        : undefined,
       message: error.message,
     });
 
-    // Preserve the original error for server-side debugging.
     throw new Error(
-      `Failed to join live during "${currentStep}": ${error.message}`
+      `Failed to join live during "${currentStep}": ${error.message}`,
     );
   }
 },
+
+
     getLiveGifts: async (_, __, { user, prisma }) => {
   if (!user) {
     throw new Error("Unauthorized");
