@@ -113,7 +113,7 @@ const getAgoraChatAppToken = async () => {
   validateAgoraChatConfig();
 
   const tokenUrl = getAgoraChatUrl("token");
-
+   console.log("AGORA_CHAT_CLIENT_ID-----------",AGORA_CHAT_CLIENT_ID,AGORA_CHAT_CLIENT_SECRET);
   try {
     const { data } = await axios.post(
       tokenUrl,
@@ -138,7 +138,7 @@ const getAgoraChatAppToken = async () => {
 
       throw new Error("Agora Chat did not return an application access token");
     }
-
+    console.log("this is access token for chat",data.access_token);
     return data.access_token;
   } catch (error) {
     // Never log the request body, client secret, or returned access token.
@@ -190,6 +190,7 @@ const createAgoraChatUser = async (username) => {
   }
 
   const appToken = await getAgoraChatAppToken();
+  console.log("appToken-----------------",appToken);
 
   try {
     const response = await axios.post(
