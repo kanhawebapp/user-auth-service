@@ -3006,9 +3006,28 @@ module.exports = {
       }
     },
 
-    getLiveGifts: async (_, __, { user, prisma }) => {
+    getLiveGifts: async (_, __, context) => {
+      console.log("Context keys:", Object.keys(context ?? {}));
+      console.log("Prisma exists:", Boolean(context?.prisma));
+      console.log(
+        "Prisma liveGift model exists:",
+        Boolean(context?.prisma?.liveGift),
+      );
+
+      const { user, prisma } = context ?? {};
+
       if (!user) {
         throw new Error("Unauthorized");
+      }
+
+      if (!prisma) {
+        throw new Error("Prisma is missing from GraphQL context");
+      }
+
+      if (!prisma.liveGift) {
+        throw new Error(
+          "Prisma liveGift model is missing. Check Prisma schema and client generation.",
+        );
       }
 
       return prisma.liveGift.findMany({
@@ -5784,62 +5803,63 @@ module.exports = {
         booking: result,
       };
     },
-    startLive: async (_, { title }, { user }) => {
-      try {
-        if (!user) {
-          throw new Error("Unauthorized");
-        }
 
-        let stream = await prisma.liveStream.findFirst({
-          where: {
-            astrologerId: user.id,
-            status: "SCHEDULED",
-          },
-          orderBy: {
-            scheduledAt: "asc",
-          },
-        });
+    // startLive: async (_, { title }, { user }) => {
+    //   try {
+    //     if (!user) {
+    //       throw new Error("Unauthorized");
+    //     }
 
-        if (stream) {
-          stream = await prisma.liveStream.update({
-            where: {
-              id: stream.id,
-            },
-            data: {
-              status: "LIVE",
-            },
-          });
-        } else {
-          stream = await prisma.liveStream.create({
-            data: {
-              astrologerId: user.id,
-              title,
-              channelName: `astro-${user.id}`,
-              status: "LIVE",
-            },
-          });
-        }
+    //     let stream = await prisma.liveStream.findFirst({
+    //       where: {
+    //         astrologerId: user.id,
+    //         status: "SCHEDULED",
+    //       },
+    //       orderBy: {
+    //         scheduledAt: "asc",
+    //       },
+    //     });
 
-        const uid = Math.floor(Math.random() * 100000);
+    //     if (stream) {
+    //       stream = await prisma.liveStream.update({
+    //         where: {
+    //           id: stream.id,
+    //         },
+    //         data: {
+    //           status: "LIVE",
+    //         },
+    //       });
+    //     } else {
+    //       stream = await prisma.liveStream.create({
+    //         data: {
+    //           astrologerId: user.id,
+    //           title,
+    //           channelName: `astro-${user.id}`,
+    //           status: "LIVE",
+    //         },
+    //       });
+    //     }
 
-        const token = generateRtcToken({
-          channelName: stream.channelName,
-          uid,
-          role: "publisher",
-        });
+    //     const uid = Math.floor(Math.random() * 100000);
 
-        return {
-          token,
-          uid,
-          appId: process.env.AGORA_APP_ID || "3a1816ebf7bf47b094c7540e2cf2aac0",
-          channelName: stream.channelName,
-        };
-      } catch (error) {
-        console.error("startLive Error:", error);
+    //     const token = generateRtcToken({
+    //       channelName: stream.channelName,
+    //       uid,
+    //       role: "publisher",
+    //     });
 
-        throw new Error(error.message || "Failed to start live");
-      }
-    },
+    //     return {
+    //       token,
+    //       uid,
+    //       appId: process.env.AGORA_APP_ID || "3a1816ebf7bf47b094c7540e2cf2aac0",
+    //       channelName: stream.channelName,
+    //     };
+    //   } catch (error) {
+    //     console.error("startLive Error:", error);
+
+    //     throw new Error(error.message || "Failed to start live");
+    //   }
+    // },
 
     sendLiveGift: async (_, { streamId, giftId, quantity }, { user }) => {
       if (!user) {
