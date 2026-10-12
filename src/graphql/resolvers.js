@@ -2921,7 +2921,7 @@ module.exports = {
     currentStep = "create or verify Agora Chat user";
 
     const chatUserId = `user_${user.id}`;
-
+     console.log("chatUserId-----------:",chatUserId);
     await createAgoraChatUser(chatUserId);
 
     // 5. Generate RTC token
@@ -2934,18 +2934,22 @@ module.exports = {
       uid,
       role: "subscriber",
     });
+    console.log("rtcToken----------------:",rtcToken);
 
     // 6. Generate Agora Chat token
     currentStep = "generate Agora Chat user token";
 
     const chatToken = await generateChatToken(chatUserId);
+    console.log("chatToken-------",chatToken);
 
     // 7. Validate response configuration
     currentStep = "validate response configuration";
 
     const appId = process.env.AGORA_APP_ID?.trim();
+    console.log("appId-------------:",appId);
     const chatAppKey =
       process.env.AGORA_CHAT_APP_KEY?.trim();
+      console.log("chatAppKey",chatAppKey);
 
     if (!appId) {
       throw new Error("AGORA_APP_ID is missing");
