@@ -6,17 +6,29 @@ const {
 
 const axios = require("axios");
 
-const AGORA_APP_ID = process.env.AGORA_APP_ID;
-const AGORA_APP_CERTIFICATE = process.env.AGORA_APP_CERTIFICATE;
+const AGORA_CHAT_ORG =
+  process.env.AGORA_CHAT_ORG?.trim() ||
+  process.env.AGORA_CHAT_ORGNAME?.trim() ||
+  "";
 
-const AGORA_CHAT_ORG = process.env.AGORA_CHAT_ORG;
-const AGORA_CHAT_APP = process.env.AGORA_CHAT_APP;
+const AGORA_CHAT_APP =
+  process.env.AGORA_CHAT_APP?.trim() ||
+  process.env.AGORA_CHAT_APNAME?.trim() ||
+  "";
+
+const AGORA_CHAT_BASE_URL = (
+  process.env.AGORA_CHAT_BASE_URL ||
+  process.env.AGORA_CHAT_BASEURL ||
+  ""
+)
+  .trim()
+  .replace(/\/+$/, "");
 
 const AGORA_CHAT_CLIENT_ID =
-  process.env.AGORA_CHAT_CLIENT_ID || "";
+  process.env.AGORA_CHAT_CLIENT_ID?.trim() || "";
 
 const AGORA_CHAT_CLIENT_SECRET =
-  process.env.AGORA_CHAT_CLIENT_SECRET || "";
+  process.env.AGORA_CHAT_CLIENT_SECRET?.trim() || "";
 
 /**
  * RTC TOKEN
@@ -51,9 +63,7 @@ const generateRtcToken = ({
  * Get Agora Chat App Token
  */
 const getAgoraChatAppToken = async () => {
-  const baseUrl = (
-    process.env.AGORA_CHAT_BASE_URL || ""
-  ).trim().replace(/\/+$/, "");
+  const baseUrl = AGORA_CHAT_BASE_URL;
 
   const org = process.env.AGORA_CHAT_ORG?.trim();
   const app = process.env.AGORA_CHAT_APP?.trim();
@@ -164,9 +174,7 @@ const generateChatToken = async (username) => {
     throw new Error("Agora Chat username is required");
   }
 
-  const baseUrl = (
-    process.env.AGORA_CHAT_BASE_URL || ""
-  ).trim().replace(/\/+$/, "");
+ const baseUrl = AGORA_CHAT_BASE_URL;
 
   const org = process.env.AGORA_CHAT_ORG?.trim();
   const app = process.env.AGORA_CHAT_APP?.trim();
