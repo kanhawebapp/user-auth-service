@@ -1256,17 +1256,19 @@ type VerifyServiceCouponResponse {
     DRAFT
     PUBLISHED
   }
-  type LiveJoinResponse {
-    rtcToken: String!
-    uid: Int!
-    appId: String!
-    channelName: String!
+ type LiveJoinResponse {
+  id: ID!
 
-    chatUserId: String!
-    chatToken: String!
-    chatRoomId: String!
-    chatAppKey: String!
-  }
+  rtcToken: String!
+  uid: Int!
+  appId: String!
+  channelName: String!
+
+  chatUserId: String!
+  chatToken: String!
+  chatRoomId: String!
+  chatAppKey: String!
+}
   type PrivacyPage {
     id: ID
 
