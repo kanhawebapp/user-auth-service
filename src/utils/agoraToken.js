@@ -51,22 +51,76 @@ const generateRtcToken = ({
  * Get Agora Chat App Token
  */
 const getAgoraChatAppToken = async () => {
-  const { data } = await axios.post(
-    `https://a61.chat.agora.io/${AGORA_CHAT_ORG}/${AGORA_CHAT_APP}/token`,
-    {
-      grant_type: "client_credentials",
-      client_id: AGORA_CHAT_CLIENT_ID,
-      client_secret: AGORA_CHAT_CLIENT_SECRET,
-    }
-  );
+  const baseUrl = (
+    process.env.AGORA_CHAT_BASE_URL || ""
+  ).trim().replace(/\/+$/, "");
 
-  if (!data.access_token) {
+  const org = process.env.AGORA_CHAT_ORG?.trim();
+  const app = process.env.AGORA_CHAT_APP?.trim();
+
+  const clientId =
+    process.env.AGORA_CHAT_CLIENT_ID?.trim();
+
+  const clientSecret =
+    process.env.AGORA_CHAT_CLIENT_SECRET?.trim();
+
+  if (!baseUrl || !org || !app) {
     throw new Error(
-      "Agora Chat did not return an app access token"
+      "Agora Chat configuration is incomplete: " +
+      "check AGORA_CHAT_BASE_URL, AGORA_CHAT_ORG, " +
+      "and AGORA_CHAT_APP"
     );
   }
 
-  return data.access_token;
+  if (!clientId || !clientSecret) {
+    throw new Error(
+      "Agora Chat client credentials are missing"
+    );
+  }
+
+  const tokenUrl =
+    `${baseUrl}/${encodeURIComponent(org)}/` +
+    `${encodeURIComponent(app)}/token`;
+
+  try {
+    const { data } = await axios.post(
+      tokenUrl,
+      {
+        grant_type: "client_credentials",
+        client_id: clientId,
+        client_secret: clientSecret,
+      },
+      {
+        headers: {
+          "Content-Type": "application/json",
+        },
+        timeout: 15000,
+      }
+    );
+
+    if (!data?.access_token) {
+      throw new Error(
+        "Agora Chat did not return an application access token"
+      );
+    }
+
+    return data.access_token;
+  } catch (error) {
+    console.error("Agora Chat application token request failed", {
+      status: error.response?.status,
+      error: error.response?.data?.error,
+      description:
+        error.response?.data?.error_description,
+      response: error.response?.data,
+      message: error.message,
+    });
+
+    throw new Error(
+      `Agora Chat application authentication failed: ${
+        error.response?.status || error.message
+      }`
+    );
+  }
 };
 
 /**
@@ -106,30 +160,66 @@ const createAgoraChatUser = async (username) => {
  * Generate User Chat Token
  */
 const generateChatToken = async (username) => {
-  const appToken = await getAgoraChatAppToken();
+  if (!username) {
+    throw new Error("Agora Chat username is required");
+  }
 
-  const { data } = await axios.post(
-    `https://a61.chat.agora.io/${AGORA_CHAT_ORG}/${AGORA_CHAT_APP}/token`,
-    {
-      grant_type: "password",
-      username,
-      password: "123456",
-    },
-    {
-      headers: {
-        Authorization: `Bearer ${appToken}`,
-        "Content-Type": "application/json",
-      },
-    }
-  );
+  const baseUrl = (
+    process.env.AGORA_CHAT_BASE_URL || ""
+  ).trim().replace(/\/+$/, "");
 
-  if (!data.access_token) {
+  const org = process.env.AGORA_CHAT_ORG?.trim();
+  const app = process.env.AGORA_CHAT_APP?.trim();
+
+  if (!baseUrl || !org || !app) {
     throw new Error(
-      "Agora Chat did not return a user access token"
+      "Agora Chat REST API configuration is incomplete"
     );
   }
 
-  return data.access_token;
+  const appToken = await getAgoraChatAppToken();
+
+  try {
+    const { data } = await axios.post(
+      `${baseUrl}/${encodeURIComponent(org)}/${encodeURIComponent(app)}/token`,
+      {
+        grant_type: "password",
+        username,
+        password: "123456",
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${appToken}`,
+          "Content-Type": "application/json",
+        },
+        timeout: 15000,
+      }
+    );
+
+    if (!data?.access_token) {
+      throw new Error(
+        "Agora Chat did not return a user access token"
+      );
+    }
+
+    return data.access_token;
+  } catch (error) {
+    console.error("Agora Chat user token request failed", {
+      username,
+      status: error.response?.status,
+      error: error.response?.data?.error,
+      description:
+        error.response?.data?.error_description,
+      response: error.response?.data,
+      message: error.message,
+    });
+
+    throw new Error(
+      `Agora Chat user authentication failed: ${
+        error.response?.status || error.message
+      }`
+    );
+  }
 };
 
 /**
