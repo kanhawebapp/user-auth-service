@@ -1,10 +1,19 @@
-
-const {
-  RtcTokenBuilder,
-  RtcRole,
-} = require("agora-token");
-
+const { RtcTokenBuilder, RtcRole } = require("agora-token");
 const axios = require("axios");
+
+// ======================================================
+// Agora RTC Configuration
+// ======================================================
+
+const AGORA_APP_ID = process.env.AGORA_APP_ID?.trim() || "";
+
+const AGORA_APP_CERTIFICATE =
+  process.env.AGORA_APP_CERTIFICATE?.trim() || "";
+
+// ======================================================
+// Agora Chat Configuration
+// Supports existing and standardized environment names
+// ======================================================
 
 const AGORA_CHAT_ORG =
   process.env.AGORA_CHAT_ORG?.trim() ||
@@ -30,14 +39,84 @@ const AGORA_CHAT_CLIENT_ID =
 const AGORA_CHAT_CLIENT_SECRET =
   process.env.AGORA_CHAT_CLIENT_SECRET?.trim() || "";
 
-/**
- * RTC TOKEN
- */
+// Must match the password assigned to the Chat users.
+const AGORA_CHAT_USER_PASSWORD =
+  process.env.AGORA_CHAT_USER_PASSWORD || "";
+
+// ======================================================
+// Validate Agora Chat Configuration
+// ======================================================
+
+const validateAgoraChatConfig = () => {
+  const missing = [];
+
+  if (!AGORA_CHAT_BASE_URL) {
+    missing.push("AGORA_CHAT_BASEURL");
+  }
+
+  if (!AGORA_CHAT_ORG) {
+    missing.push("AGORA_CHAT_ORGNAME");
+  }
+
+  if (!AGORA_CHAT_APP) {
+    missing.push("AGORA_CHAT_APNAME");
+  }
+
+  if (!AGORA_CHAT_CLIENT_ID) {
+    missing.push("AGORA_CHAT_CLIENT_ID");
+  }
+
+  if (!AGORA_CHAT_CLIENT_SECRET) {
+    missing.push("AGORA_CHAT_CLIENT_SECRET");
+  }
+
+  if (missing.length) {
+    console.error("Missing Agora Chat configuration:", missing);
+
+    throw new Error(
+      `Agora Chat configuration is incomplete: ${missing.join(", ")}`
+    );
+  }
+};
+
+// ======================================================
+// Build Agora Chat REST API URL
+// ======================================================
+
+const getAgoraChatUrl = (path) => {
+  validateAgoraChatConfig();
+
+  return (
+    `${AGORA_CHAT_BASE_URL}/` +
+    `${encodeURIComponent(AGORA_CHAT_ORG)}/` +
+    `${encodeURIComponent(AGORA_CHAT_APP)}/` +
+    path.replace(/^\/+/, "")
+  );
+};
+
+// ======================================================
+// Generate Agora RTC Token
+// ======================================================
+
 const generateRtcToken = ({
   channelName,
   uid,
   role = "subscriber",
 }) => {
+  if (!AGORA_APP_ID || !AGORA_APP_CERTIFICATE) {
+    throw new Error(
+      "Agora RTC configuration is incomplete: check AGORA_APP_ID and AGORA_APP_CERTIFICATE"
+    );
+  }
+
+  if (!channelName) {
+    throw new Error("Agora RTC channel name is required");
+  }
+
+  if (!Number.isInteger(uid) || uid < 0) {
+    throw new Error("Agora RTC UID must be a non-negative integer");
+  }
+
   const expirationTimeInSeconds = 3600;
   const currentTimestamp = Math.floor(Date.now() / 1000);
 
@@ -59,46 +138,22 @@ const generateRtcToken = ({
   );
 };
 
-/**
- * Get Agora Chat App Token
- */
+// ======================================================
+// Generate Agora Chat Application Token
+// ======================================================
+
 const getAgoraChatAppToken = async () => {
-  const baseUrl = AGORA_CHAT_BASE_URL;
+  validateAgoraChatConfig();
 
-  const org = process.env.AGORA_CHAT_ORG?.trim();
-  const app = process.env.AGORA_CHAT_APP?.trim();
-
-  const clientId =
-    process.env.AGORA_CHAT_CLIENT_ID?.trim();
-
-  const clientSecret =
-    process.env.AGORA_CHAT_CLIENT_SECRET?.trim();
-
-  if (!baseUrl || !org || !app) {
-    throw new Error(
-      "Agora Chat configuration is incomplete: " +
-      "check AGORA_CHAT_BASE_URL, AGORA_CHAT_ORG, " +
-      "and AGORA_CHAT_APP"
-    );
-  }
-
-  if (!clientId || !clientSecret) {
-    throw new Error(
-      "Agora Chat client credentials are missing"
-    );
-  }
-
-  const tokenUrl =
-    `${baseUrl}/${encodeURIComponent(org)}/` +
-    `${encodeURIComponent(app)}/token`;
+  const tokenUrl = getAgoraChatUrl("token");
 
   try {
     const { data } = await axios.post(
       tokenUrl,
       {
         grant_type: "client_credentials",
-        client_id: clientId,
-        client_secret: clientSecret,
+        client_id: AGORA_CHAT_CLIENT_ID,
+        client_secret: AGORA_CHAT_CLIENT_SECRET,
       },
       {
         headers: {
@@ -119,9 +174,7 @@ const getAgoraChatAppToken = async () => {
     console.error("Agora Chat application token request failed", {
       status: error.response?.status,
       error: error.response?.data?.error,
-      description:
-        error.response?.data?.error_description,
-      response: error.response?.data,
+      description: error.response?.data?.error_description,
       message: error.message,
     });
 
@@ -133,67 +186,95 @@ const getAgoraChatAppToken = async () => {
   }
 };
 
-/**
- * Create Chat User (ignore if already exists)
- */
+// ======================================================
+// Create Agora Chat User
+// Ignore duplicate users
+// ======================================================
+
 const createAgoraChatUser = async (username) => {
+  if (!username) {
+    throw new Error("Agora Chat username is required");
+  }
+
+  if (!AGORA_CHAT_USER_PASSWORD) {
+    throw new Error(
+      "AGORA_CHAT_USER_PASSWORD is missing"
+    );
+  }
+
   const appToken = await getAgoraChatAppToken();
 
   try {
-    await axios.post(
-      `https://a61.chat.agora.io/${AGORA_CHAT_ORG}/${AGORA_CHAT_APP}/users`,
+    const response = await axios.post(
+      getAgoraChatUrl("users"),
       {
         username,
-        password: "123456",
+        password: AGORA_CHAT_USER_PASSWORD,
       },
       {
         headers: {
           Authorization: `Bearer ${appToken}`,
           "Content-Type": "application/json",
         },
+        timeout: 15000,
       }
     );
-  } catch (err) {
-    // Ignore duplicate users
+
+    return response.data;
+  } catch (error) {
+    // Existing Chat users do not need to be created again.
     if (
-      err.response?.data?.error ===
+      error.response?.data?.error ===
       "duplicate_unique_property_exists"
     ) {
-      return;
+      return {
+        success: true,
+        alreadyExists: true,
+      };
     }
 
-    throw err;
+    console.error("Agora Chat user creation failed", {
+      username,
+      status: error.response?.status,
+      error: error.response?.data?.error,
+      description: error.response?.data?.error_description,
+      message: error.message,
+    });
+
+    throw new Error(
+      `Agora Chat user creation failed: ${
+        error.response?.status || error.message
+      }`
+    );
   }
 };
 
-/**
- * Generate User Chat Token
- */
+// ======================================================
+// Generate Agora Chat User Token
+// ======================================================
+
 const generateChatToken = async (username) => {
   if (!username) {
     throw new Error("Agora Chat username is required");
   }
 
- const baseUrl = AGORA_CHAT_BASE_URL;
-
-  const org = process.env.AGORA_CHAT_ORG?.trim();
-  const app = process.env.AGORA_CHAT_APP?.trim();
-
-  if (!baseUrl || !org || !app) {
+  if (!AGORA_CHAT_USER_PASSWORD) {
     throw new Error(
-      "Agora Chat REST API configuration is incomplete"
+      "AGORA_CHAT_USER_PASSWORD is missing"
     );
   }
 
   const appToken = await getAgoraChatAppToken();
 
+  const tokenUrl = getAgoraChatUrl("token");
+
   try {
     const { data } = await axios.post(
-      `${baseUrl}/${encodeURIComponent(org)}/${encodeURIComponent(app)}/token`,
+      tokenUrl,
       {
         grant_type: "password",
         username,
-        password: "123456",
+        password: AGORA_CHAT_USER_PASSWORD,
       },
       {
         headers: {
@@ -216,9 +297,7 @@ const generateChatToken = async (username) => {
       username,
       status: error.response?.status,
       error: error.response?.data?.error,
-      description:
-        error.response?.data?.error_description,
-      response: error.response?.data,
+      description: error.response?.data?.error_description,
       message: error.message,
     });
 
@@ -230,9 +309,10 @@ const generateChatToken = async (username) => {
   }
 };
 
-/**
- * Create Agora Chat Room
- */
+// ======================================================
+// Create Agora Chat Room
+// ======================================================
+
 const createAgoraChatRoom = async (roomName) => {
   if (!roomName || typeof roomName !== "string") {
     throw new Error("A valid room name is required");
@@ -240,39 +320,62 @@ const createAgoraChatRoom = async (roomName) => {
 
   const appToken = await getAgoraChatAppToken();
 
-  const response = await axios.post(
-    `https://a61.chat.agora.io/${AGORA_CHAT_ORG}/${AGORA_CHAT_APP}/chatrooms`,
-    {
-      name: roomName,
-      description: `DhwaniAstro live: ${roomName}`,
-      maxusers: 500,
-    },
-    {
-      headers: {
-        Authorization: `Bearer ${appToken}`,
-        "Content-Type": "application/json",
+  try {
+    const response = await axios.post(
+      getAgoraChatUrl("chatrooms"),
+      {
+        name: roomName,
+        description: `DhwaniAstro live: ${roomName}`,
+        maxusers: 500,
       },
+      {
+        headers: {
+          Authorization: `Bearer ${appToken}`,
+          "Content-Type": "application/json",
+        },
+        timeout: 15000,
+      }
+    );
+
+    const roomId =
+      response.data?.data?.id ||
+      response.data?.data?.chatroomid;
+
+    if (!roomId) {
+      console.error(
+        "Agora Chat room creation returned no room ID",
+        {
+          responseKeys: Object.keys(response.data || {}),
+        }
+      );
+
+      throw new Error(
+        "Agora Chat did not return a chat room ID"
+      );
     }
-  );
 
-  const roomId =
-    response.data?.data?.id ||
-    response.data?.data?.chatroomid;
+    return roomId;
+  } catch (error) {
+    console.error("Agora Chat room creation failed", {
+      status: error.response?.status,
+      error: error.response?.data?.error,
+      description: error.response?.data?.error_description,
+      message: error.message,
+    });
 
-  if (!roomId) {
     throw new Error(
-      "Agora Chat did not return a chat room ID"
+      `Agora Chat room creation failed: ${
+        error.response?.status || error.message
+      }`
     );
   }
-
-  return roomId;
 };
 
-/**
- * Send Gift Notification to Agora Chat Room
- *
- * Call this after the gift wallet transaction succeeds.
- */
+// ======================================================
+// Send Gift Notification to Agora Chat Room
+// Call after the gift wallet transaction succeeds.
+// ======================================================
+
 const sendAgoraChatRoomGiftNotification = async ({
   chatRoomId,
   senderUsername,
@@ -294,18 +397,16 @@ const sendAgoraChatRoomGiftNotification = async ({
     throw new Error("Gift name is required");
   }
 
-  if (
-    !Number.isInteger(quantity) ||
-    quantity < 1
-  ) {
-    throw new Error("Gift quantity must be a positive integer");
+  if (!Number.isInteger(quantity) || quantity < 1) {
+    throw new Error(
+      "Gift quantity must be a positive integer"
+    );
   }
 
-  if (
-    !Number.isFinite(totalCoins) ||
-    totalCoins < 0
-  ) {
-    throw new Error("A valid total coin amount is required");
+  if (!Number.isFinite(totalCoins) || totalCoins < 0) {
+    throw new Error(
+      "A valid total coin amount is required"
+    );
   }
 
   const appToken = await getAgoraChatAppToken();
@@ -320,28 +421,53 @@ const sendAgoraChatRoomGiftNotification = async ({
     timestamp: new Date().toISOString(),
   };
 
-  const response = await axios.post(
-    `https://a61.chat.agora.io/${AGORA_CHAT_ORG}/${AGORA_CHAT_APP}/messages`,
-    {
-      target_type: "chatrooms",
-      target: [String(chatRoomId)],
-      from: senderUsername,
-      msg: {
-        type: "txt",
-        msg: `${giftName} x${quantity}`,
+  try {
+    const response = await axios.post(
+      getAgoraChatUrl("messages"),
+      {
+        target_type: "chatrooms",
+        target: [String(chatRoomId)],
+        from: senderUsername,
+        msg: {
+          type: "txt",
+          msg: `${giftName} x${quantity}`,
+        },
+        ext: giftPayload,
       },
-      ext: giftPayload,
-    },
-    {
-      headers: {
-        Authorization: `Bearer ${appToken}`,
-        "Content-Type": "application/json",
-      },
-    }
-  );
+      {
+        headers: {
+          Authorization: `Bearer ${appToken}`,
+          "Content-Type": "application/json",
+        },
+        timeout: 15000,
+      }
+    );
 
-  return response.data;
+    return response.data;
+  } catch (error) {
+    console.error(
+      "Agora Chat gift notification failed",
+      {
+        chatRoomId,
+        status: error.response?.status,
+        error: error.response?.data?.error,
+        description:
+          error.response?.data?.error_description,
+        message: error.message,
+      }
+    );
+
+    throw new Error(
+      `Agora Chat gift notification failed: ${
+        error.response?.status || error.message
+      }`
+    );
+  }
 };
+
+// ======================================================
+// Exports
+// ======================================================
 
 module.exports = {
   generateRtcToken,
@@ -350,4 +476,3 @@ module.exports = {
   createAgoraChatRoom,
   sendAgoraChatRoomGiftNotification,
 };
-
