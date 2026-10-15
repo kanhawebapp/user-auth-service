@@ -6049,7 +6049,6 @@ module.exports = {
           create: {
             astrologerId: stream.astrologerId,
             balanceCoins: commissionCoins,
-            amount: commissionCoins,
           },
           update: {},
         });
