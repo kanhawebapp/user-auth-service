@@ -6000,11 +6000,13 @@ module.exports = {
     }
 
     // Astrologer receives the amount after commission.
+    console.log("commissionPercent---------------:",commissionPercent);
     const astrologerCoins = Math.floor(
       (totalCoins * (100 - commissionPercent)) / 100
     );
 
     const commissionCoins = totalCoins - astrologerCoins;
+
 
     console.log("Gift calculation:", {
       giftName: gift.name,
@@ -6046,7 +6048,8 @@ module.exports = {
           },
           create: {
             astrologerId: stream.astrologerId,
-            balanceCoins: 0,
+            balanceCoins: commissionCoins,
+            amount: commissionCoins,
           },
           update: {},
         });
@@ -6119,6 +6122,7 @@ module.exports = {
             userWalletId: userWallet.id,
             type: "DEBIT",
             coins: totalCoins,
+            amount: totalCoins,
             updatedBalance: userWallet.balanceCoins,
             description: `Live gift: ${gift.name} x${quantity}`,
           },
@@ -6134,6 +6138,7 @@ module.exports = {
               astrologerWalletId: astrologerWallet.id,
               type: "CREDIT",
               coins: astrologerCoins,
+              amount: astrologerCoins,
               updatedBalance: astrologerWallet.balanceCoins,
               description: `Live gift earnings: ${gift.name} x${quantity}`,
             },
