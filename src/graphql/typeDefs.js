@@ -1427,21 +1427,28 @@ type VerifyServiceCouponResponse {
   rechargePackId: ID!
   couponCode: String!
 }
-  type SendLiveGiftResponse {
+ type SendLiveGiftResponse {
   success: Boolean!
-  transactionId: ID!
+  message: String!
+  giftId: ID!
   giftName: String!
-  giftIcon: String!
+  icon: String!
   quantity: Int!
   totalCoins: Int!
+  astrologerCoins: Int!
+  commissionCoins: Int!
+  userBalance: Int!
+  astrologerBalance: Int!
+  transactionId: ID!
 }
   #-------------------live gift----------
-  type LiveGift {
+type LiveGift {
   id: ID!
   name: String!
   icon: String!
   price: Int!
 }
+
   
   type Query {
    getPaymentInvoice(transactionId: ID!): PaymentInvoice
@@ -1617,7 +1624,7 @@ type VerifyServiceCouponResponse {
 
   softDeleteUser: SoftDeleteUserResponse!
 
-  sendLiveGift(
+ sendLiveGift(
     streamId: ID!
     giftId: ID!
     quantity: Int!

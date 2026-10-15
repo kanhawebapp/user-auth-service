@@ -3006,41 +3006,52 @@ module.exports = {
       }
     },
 
-    getLiveGifts: async (_, __, context) => {
-      console.log("Context keys:", Object.keys(context ?? {}));
-      console.log("Prisma exists:", Boolean(context?.prisma));
-      console.log(
-        "Prisma liveGift model exists:",
-        Boolean(context?.prisma?.liveGift),
+    getLiveGifts: async (_, __, { user }) => {
+  try {
+    console.log("========== getLiveGifts ==========");
+    console.log("Authenticated user:", user?.id);
+
+    // 1. Validate authentication.
+    if (!user) {
+      throw new Error("Unauthorized");
+    }
+
+    // 2. Use the shared Prisma client.
+    // Do not depend on context.prisma.
+    if (!prisma) {
+      throw new Error("Prisma client is not initialized");
+    }
+
+    if (!prisma.liveGift) {
+      throw new Error(
+        "Prisma liveGift model is missing. Run Prisma client generation."
       );
+    }
 
-      const { user, prisma } = context ?? {};
+    // 3. Fetch active gifts.
+    const gifts = await prisma.liveGift.findMany({
+      where: {
+        isActive: true,
+      },
+      select: {
+        id: true,
+        name: true,
+        icon: true,
+        price: true,
+      },
+      orderBy: {
+        price: "asc",
+      },
+    });
 
-      if (!user) {
-        throw new Error("Unauthorized");
-      }
+    console.log("Active gifts found:", gifts.length);
 
-      if (!prisma) {
-        throw new Error("Prisma is missing from GraphQL context");
-      }
-
-      if (!prisma.liveGift) {
-        throw new Error(
-          "Prisma liveGift model is missing. Check Prisma schema and client generation.",
-        );
-      }
-
-      return prisma.liveGift.findMany({
-        where: { isActive: true },
-        select: {
-          id: true,
-          name: true,
-          icon: true,
-          price: true,
-        },
-        orderBy: { price: "asc" },
-      });
-    },
+    return gifts;
+  } catch (error) {
+    console.error("getLiveGifts failed:", error.message);
+    throw error;
+  }
+},
 
     getCoupons: async (_, __, context) => {
       try {
@@ -5862,54 +5873,108 @@ module.exports = {
     // },
 
     sendLiveGift: async (_, { streamId, giftId, quantity }, { user }) => {
-      if (!user) {
-        throw new Error("Unauthorized");
-      }
+  try {
+    console.log("========== sendLiveGift ==========");
+    console.log("User:", user?.id);
+    console.log("Stream ID:", streamId);
+    console.log("Gift ID:", giftId);
+    console.log("Quantity:", quantity);
 
-      if (!Number.isInteger(quantity) || quantity < 1 || quantity > 100) {
-        throw new Error("Invalid gift quantity");
-      }
+    // =====================================================
+    // 1. AUTHENTICATION AND INPUT VALIDATION
+    // =====================================================
 
-      // 1. Validate the live stream.
-      const stream = await prisma.liveStream.findFirst({
-        where: {
-          id: streamId,
-          status: "LIVE",
-        },
-      });
+    if (!user?.id) {
+      throw new Error("Unauthorized");
+    }
 
-      if (!stream) {
-        throw new Error("Live stream is not active");
-      }
+    if (!prisma) {
+      throw new Error("Prisma client is not initialized");
+    }
 
-      if (stream.astrologerId === user.id) {
-        throw new Error("Astrologers cannot send gifts to their own stream");
-      }
+    if (
+      !Number.isInteger(quantity) ||
+      quantity < 1 ||
+      quantity > 100
+    ) {
+      throw new Error("Gift quantity must be between 1 and 100");
+    }
 
-      if (!stream.chatRoomId) {
-        throw new Error("Live stream Chat room is not configured");
-      }
+    if (!streamId || !giftId) {
+      throw new Error("Stream ID and gift ID are required");
+    }
 
-      // 2. Validate the gift.
-      const gift = await prisma.liveGift.findFirst({
-        where: {
-          id: giftId,
-          isActive: true,
-        },
-      });
+    // =====================================================
+    // 2. VALIDATE THE LIVE STREAM
+    // =====================================================
 
-      if (!gift) {
-        throw new Error("Gift not found or inactive");
-      }
+    const stream = await prisma.liveStream.findFirst({
+      where: {
+        id: streamId,
+        status: "LIVE",
+      },
+    });
 
-      const totalCoins = gift.price * quantity;
+    if (!stream) {
+      throw new Error("Live stream is not active");
+    }
 
-      if (!Number.isSafeInteger(totalCoins) || totalCoins <= 0) {
-        throw new Error("Invalid gift amount");
-      }
+    if (stream.astrologerId === user.id) {
+      throw new Error(
+        "Astrologers cannot send gifts to their own stream"
+      );
+    }
 
-      // 3. Read the astrologer's configured gift commission.
-      const commissionConfig = await prisma.astrologerPricing.findUnique({
+    if (!stream.chatRoomId) {
+      throw new Error(
+        "Live stream Chat room is not configured"
+      );
+    }
+
+    // =====================================================
+    // 3. VALIDATE THE GIFT
+    // =====================================================
+
+    const gift = await prisma.liveGift.findFirst({
+      where: {
+        id: giftId,
+        isActive: true,
+      },
+      select: {
+        id: true,
+        name: true,
+        icon: true,
+        price: true,
+        isActive: true,
+      },
+    });
+
+    if (!gift) {
+      throw new Error("Gift not found or inactive");
+    }
+
+    if (
+      !Number.isSafeInteger(gift.price) ||
+      gift.price <= 0
+    ) {
+      throw new Error("Invalid gift price");
+    }
+
+    const totalCoins = gift.price * quantity;
+
+    if (
+      !Number.isSafeInteger(totalCoins) ||
+      totalCoins <= 0
+    ) {
+      throw new Error("Invalid total gift amount");
+    }
+
+    // =====================================================
+    // 4. FETCH ASTROLOGER COMMISSION
+    // =====================================================
+
+    const commissionConfig =
+      await prisma.astrologerPricing.findUnique({
         where: {
           astrologerId_type: {
             astrologerId: stream.astrologerId,
@@ -5918,29 +5983,48 @@ module.exports = {
         },
       });
 
-      const commissionPercent =
-        commissionConfig?.isActive && commissionConfig.commissionPercent != null
-          ? commissionConfig.commissionPercent
-          : 0;
+    const commissionPercent =
+      commissionConfig?.isActive &&
+      commissionConfig.commissionPercent != null
+        ? commissionConfig.commissionPercent
+        : 0;
 
-      if (
-        !Number.isFinite(commissionPercent) ||
-        commissionPercent < 0 ||
-        commissionPercent > 100
-      ) {
-        throw new Error("Invalid astrologer gift commission");
-      }
-
-      // Use whole coins because WalletTransaction.coins is Int.
-      const astrologerCoins = Math.floor(
-        (totalCoins * (100 - commissionPercent)) / 100,
+    if (
+      !Number.isFinite(commissionPercent) ||
+      commissionPercent < 0 ||
+      commissionPercent > 100
+    ) {
+      throw new Error(
+        "Invalid astrologer gift commission"
       );
+    }
 
-      const commissionCoins = totalCoins - astrologerCoins;
+    // Astrologer receives the amount after commission.
+    const astrologerCoins = Math.floor(
+      (totalCoins * (100 - commissionPercent)) / 100
+    );
 
-      // 4. Perform wallet updates and transaction recording atomically.
-      const result = await prisma.$transaction(async (tx) => {
-        // Create wallets if they do not exist yet.
+    const commissionCoins = totalCoins - astrologerCoins;
+
+    console.log("Gift calculation:", {
+      giftName: gift.name,
+      quantity,
+      totalCoins,
+      commissionPercent,
+      astrologerCoins,
+      commissionCoins,
+    });
+
+    // =====================================================
+    // 5. ATOMIC WALLET UPDATES AND TRANSACTION RECORDS
+    // =====================================================
+
+    const result = await prisma.$transaction(
+      async (tx) => {
+        // -------------------------------------------------
+        // Create user wallet if it does not exist.
+        // -------------------------------------------------
+
         await tx.userWallet.upsert({
           where: {
             userId: user.id,
@@ -5951,6 +6035,10 @@ module.exports = {
           },
           update: {},
         });
+
+        // -------------------------------------------------
+        // Create astrologer wallet if it does not exist.
+        // -------------------------------------------------
 
         await tx.astrologerWallet.upsert({
           where: {
@@ -5963,7 +6051,10 @@ module.exports = {
           update: {},
         });
 
-        // Atomically debit the user only if sufficient coins remain.
+        // -------------------------------------------------
+        // Debit user wallet only when sufficient coins exist.
+        // -------------------------------------------------
+
         const debit = await tx.userWallet.updateMany({
           where: {
             userId: user.id,
@@ -5982,13 +6073,18 @@ module.exports = {
           throw new Error("Insufficient wallet balance");
         }
 
-        const userWallet = await tx.userWallet.findUniqueOrThrow({
-          where: {
-            userId: user.id,
-          },
-        });
+        // Read updated user balance.
+        const userWallet =
+          await tx.userWallet.findUniqueOrThrow({
+            where: {
+              userId: user.id,
+            },
+          });
 
-        // Credit the astrologer with earnings after commission.
+        // -------------------------------------------------
+        // Credit astrologer earnings.
+        // -------------------------------------------------
+
         await tx.astrologerWallet.update({
           where: {
             astrologerId: stream.astrologerId,
@@ -6006,13 +6102,18 @@ module.exports = {
           },
         });
 
-        const astrologerWallet = await tx.astrologerWallet.findUniqueOrThrow({
-          where: {
-            astrologerId: stream.astrologerId,
-          },
-        });
+        // Read updated astrologer balance.
+        const astrologerWallet =
+          await tx.astrologerWallet.findUniqueOrThrow({
+            where: {
+              astrologerId: stream.astrologerId,
+            },
+          });
 
-        // Record user's wallet debit.
+        // -------------------------------------------------
+        // Record user wallet debit.
+        // -------------------------------------------------
+
         await tx.walletTransaction.create({
           data: {
             userWalletId: userWallet.id,
@@ -6023,7 +6124,10 @@ module.exports = {
           },
         });
 
-        // Record astrologer's wallet credit.
+        // -------------------------------------------------
+        // Record astrologer wallet credit.
+        // -------------------------------------------------
+
         if (astrologerCoins > 0) {
           await tx.walletTransaction.create({
             data: {
@@ -6036,19 +6140,24 @@ module.exports = {
           });
         }
 
-        // Record the live gift transaction.
-        const giftTransaction = await tx.liveGiftTransaction.create({
-          data: {
-            streamId: stream.id,
-            senderId: user.id,
-            astrologerId: stream.astrologerId,
-            giftId: gift.id,
-            quantity,
-            totalCoins,
-            status: "SUCCESS",
-          },
-        });
+        // -------------------------------------------------
+        // Record live gift transaction.
+        // -------------------------------------------------
 
+        const giftTransaction =
+          await tx.liveGiftTransaction.create({
+            data: {
+              streamId: stream.id,
+              senderId: user.id,
+              astrologerId: stream.astrologerId,
+              giftId: gift.id,
+              quantity,
+              totalCoins,
+              status: "SUCCESS",
+            },
+          });
+
+        // Return values from the committed transaction.
         return {
           giftTransaction,
           userBalance: userWallet.balanceCoins,
@@ -6057,46 +6166,68 @@ module.exports = {
           astrologerCoins,
           commissionCoins,
         };
-      });
-
-      // 5. Notify the Agora Chat room after the DB transaction commits.
-      // Chat failure must not reverse the wallet transaction.
-      try {
-        await sendAgoraChatRoomGiftNotification({
-          chatRoomId: stream.chatRoomId,
-
-          // IMPORTANT: This assumes Agora Chat users are registered
-          // using the same ID as the authenticated user ID.
-          senderUsername: user.id,
-
-          senderId: user.id,
-          giftName: gift.name,
-          icon: gift.icon,
-          quantity,
-          totalCoins,
-        });
-      } catch (error) {
-        console.error(
-          "Failed to send Agora gift notification:",
-          error.response?.data || error.message,
-        );
       }
+    );
 
-      return {
-        success: true,
-        message: "Gift sent successfully",
-        giftId: gift.id,
+    // =====================================================
+    // 6. SEND AGORA CHAT GIFT NOTIFICATION
+    // =====================================================
+    //
+    // This happens after the database transaction commits.
+    // A Chat notification failure must not undo a successful
+    // wallet transaction.
+    //
+    // IMPORTANT:
+    // senderUsername must match the actual registered Agora
+    // Chat username for this user.
+    // =====================================================
+
+    try {
+      await sendAgoraChatRoomGiftNotification({
+        chatRoomId: stream.chatRoomId,
+        senderUsername: user.id,
+        senderId: user.id,
         giftName: gift.name,
         icon: gift.icon,
         quantity,
         totalCoins,
-        astrologerCoins: result.astrologerCoins,
-        commissionCoins: result.commissionCoins,
-        userBalance: result.userBalance,
-        astrologerBalance: result.astrologerBalance,
-        transactionId: result.giftTransaction.id,
-      };
-    },
+      });
+
+      console.log("Agora gift notification sent successfully");
+    } catch (error) {
+      console.error(
+        "Agora gift notification failed:",
+        error.response?.data || error.message
+      );
+    }
+
+    // =====================================================
+    // 7. RETURN RESPONSE
+    // =====================================================
+
+    return {
+      success: true,
+      message: "Gift sent successfully",
+      giftId: gift.id,
+      giftName: gift.name,
+      icon: gift.icon,
+      quantity,
+      totalCoins,
+      astrologerCoins: result.astrologerCoins,
+      commissionCoins: result.commissionCoins,
+      userBalance: result.userBalance,
+      astrologerBalance: result.astrologerBalance,
+      transactionId: result.giftTransaction.id,
+    };
+  } catch (error) {
+    console.error(
+      "sendLiveGift failed:",
+      error.message
+    );
+
+    throw error;
+  }
+},
 
     softDeleteUser: async (_, __, context) => {
       try {
