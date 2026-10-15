@@ -1449,6 +1449,12 @@ type LiveGift {
   price: Int!
 }
 
+
+type LeaveLiveResponse {
+  success: Boolean!
+  message: String!
+  channelName: String!
+}
   
   type Query {
    getPaymentInvoice(transactionId: ID!): PaymentInvoice
@@ -1629,6 +1635,8 @@ type LiveGift {
     giftId: ID!
     quantity: Int!
   ): SendLiveGiftResponse!
+
+  leaveLive(channelName: String!): LeaveLiveResponse!
   
  
 

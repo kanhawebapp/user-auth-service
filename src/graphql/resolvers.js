@@ -6228,6 +6228,53 @@ module.exports = {
     throw error;
   }
 },
+leaveLive: async (_, { channelName }, context) => {
+  try {
+    // 1. Validate authentication
+    const user = context.user;
+
+    if (!user) {
+      throw new Error("Unauthorized. Please log in.");
+    }
+
+    // 2. Validate channel name
+    if (!channelName || !channelName.trim()) {
+      throw new Error("Live channel name is required.");
+    }
+
+    // 3. Find the live stream
+    const liveStream = await prisma.liveStream.findFirst({
+      where: {
+        channelName: channelName.trim(),
+      },
+      select: {
+        id: true,
+        channelName: true,
+        status: true,
+      },
+    });
+
+    if (!liveStream) {
+      throw new Error("Live stream not found.");
+    }
+
+    // 4. Return success without ending the live stream.
+    // The viewer's frontend must disconnect from Agora RTC and Chat.
+
+    console.log(
+      `User ${user.id} requested to leave live channel ${liveStream.channelName}`
+    );
+
+    return {
+      success: true,
+      message: "You have left the live session successfully.",
+      channelName: liveStream.channelName,
+    };
+  } catch (error) {
+    console.error("Leave live error:", error.message);
+    throw new Error(error.message || "Failed to leave live session.");
+  }
+},
 
     softDeleteUser: async (_, __, context) => {
       try {
