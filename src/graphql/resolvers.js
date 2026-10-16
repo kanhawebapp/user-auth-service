@@ -5934,7 +5934,7 @@ return {
     sendLiveGift: async (_, { streamId, giftId, quantity }, { user }) => {
   try {
     console.log("========== sendLiveGift ==========");
-    console.log("User:", user?.id);
+    console.log("User ID:", user?.id);
     console.log("Stream ID:", streamId);
     console.log("Gift ID:", giftId);
     console.log("Quantity:", quantity);
@@ -5951,11 +5951,7 @@ return {
       throw new Error("Prisma client is not initialized");
     }
 
-    if (
-      !Number.isInteger(quantity) ||
-      quantity < 1 ||
-      quantity > 100
-    ) {
+    if (!Number.isInteger(quantity) || quantity < 1 || quantity > 100) {
       throw new Error("Gift quantity must be between 1 and 100");
     }
 
@@ -5964,7 +5960,50 @@ return {
     }
 
     // =====================================================
-    // 2. VALIDATE THE LIVE STREAM
+    // 2. FETCH SENDER DETAILS
+    // =====================================================
+    //
+    // Fetch the user's actual name instead of displaying
+    // their UUID in the live chat.
+    //
+    // IMPORTANT:
+    // Ensure these fields exist in your Prisma User model.
+    // Remove or replace fields that your schema does not have.
+    // =====================================================
+
+    const sender = await prisma.user.findUnique({
+      where: {
+        id: user.id,
+      },
+      select: {
+        id: true,
+        name: true,
+        displayName: true,
+        firstName: true,
+        lastName: true,
+      },
+    });
+
+    if (!sender) {
+      throw new Error("Gift sender not found");
+    }
+
+    const senderName =
+      sender.displayName?.trim() ||
+      sender.name?.trim() ||
+      [sender.firstName, sender.lastName]
+        .filter(Boolean)
+        .join(" ")
+        .trim() ||
+      "User";
+
+    console.log("Gift sender:", {
+      senderId: sender.id,
+      senderName,
+    });
+
+    // =====================================================
+    // 3. VALIDATE THE LIVE STREAM
     // =====================================================
 
     const stream = await prisma.liveStream.findFirst({
@@ -5985,13 +6024,11 @@ return {
     }
 
     if (!stream.chatRoomId) {
-      throw new Error(
-        "Live stream Chat room is not configured"
-      );
+      throw new Error("Live stream Chat room is not configured");
     }
 
     // =====================================================
-    // 3. VALIDATE THE GIFT
+    // 4. VALIDATE THE GIFT
     // =====================================================
 
     const gift = await prisma.liveGift.findFirst({
@@ -6012,24 +6049,18 @@ return {
       throw new Error("Gift not found or inactive");
     }
 
-    if (
-      !Number.isSafeInteger(gift.price) ||
-      gift.price <= 0
-    ) {
+    if (!Number.isSafeInteger(gift.price) || gift.price <= 0) {
       throw new Error("Invalid gift price");
     }
 
     const totalCoins = gift.price * quantity;
 
-    if (
-      !Number.isSafeInteger(totalCoins) ||
-      totalCoins <= 0
-    ) {
+    if (!Number.isSafeInteger(totalCoins) || totalCoins <= 0) {
       throw new Error("Invalid total gift amount");
     }
 
     // =====================================================
-    // 4. FETCH ASTROLOGER COMMISSION
+    // 5. FETCH ASTROLOGER COMMISSION
     // =====================================================
 
     const commissionConfig =
@@ -6053,19 +6084,15 @@ return {
       commissionPercent < 0 ||
       commissionPercent > 100
     ) {
-      throw new Error(
-        "Invalid astrologer gift commission"
-      );
+      throw new Error("Invalid astrologer gift commission");
     }
 
-    // Astrologer receives the amount after commission.
-    console.log("commissionPercent---------------:",commissionPercent);
+    // Calculate astrologer's earnings and platform commission.
     const astrologerCoins = Math.floor(
       (totalCoins * (100 - commissionPercent)) / 100
     );
 
     const commissionCoins = totalCoins - astrologerCoins;
-
 
     console.log("Gift calculation:", {
       giftName: gift.name,
@@ -6077,195 +6104,209 @@ return {
     });
 
     // =====================================================
-    // 5. ATOMIC WALLET UPDATES AND TRANSACTION RECORDS
+    // 6. ATOMIC WALLET UPDATES AND TRANSACTION RECORDS
     // =====================================================
 
-    const result = await prisma.$transaction(
-      async (tx) => {
-        // -------------------------------------------------
-        // Create user wallet if it does not exist.
-        // -------------------------------------------------
+    const result = await prisma.$transaction(async (tx) => {
+      // -------------------------------------------------
+      // Create user wallet if it does not exist.
+      // -------------------------------------------------
 
-        await tx.userWallet.upsert({
-          where: {
-            userId: user.id,
+      await tx.userWallet.upsert({
+        where: {
+          userId: user.id,
+        },
+        create: {
+          userId: user.id,
+          balanceCoins: 0,
+        },
+        update: {},
+      });
+
+      // -------------------------------------------------
+      // Create astrologer wallet if it does not exist.
+      // -------------------------------------------------
+
+      await tx.astrologerWallet.upsert({
+        where: {
+          astrologerId: stream.astrologerId,
+        },
+        create: {
+          astrologerId: stream.astrologerId,
+          balanceCoins: 0,
+        },
+        update: {},
+      });
+
+      // -------------------------------------------------
+      // Debit user wallet if sufficient coins exist.
+      // -------------------------------------------------
+
+      const debit = await tx.userWallet.updateMany({
+        where: {
+          userId: user.id,
+          balanceCoins: {
+            gte: totalCoins,
           },
-          create: {
-            userId: user.id,
-            balanceCoins: 0,
+        },
+        data: {
+          balanceCoins: {
+            decrement: totalCoins,
           },
-          update: {},
-        });
+        },
+      });
 
-        // -------------------------------------------------
-        // Create astrologer wallet if it does not exist.
-        // -------------------------------------------------
+      if (debit.count !== 1) {
+        throw new Error("Insufficient wallet balance");
+      }
 
-        await tx.astrologerWallet.upsert({
+      // Read updated user balance.
+      const userWallet = await tx.userWallet.findUniqueOrThrow({
+        where: {
+          userId: user.id,
+        },
+      });
+
+      // -------------------------------------------------
+      // Credit astrologer wallet.
+      // -------------------------------------------------
+
+      await tx.astrologerWallet.update({
+        where: {
+          astrologerId: stream.astrologerId,
+        },
+        data: {
+          balanceCoins: {
+            increment: astrologerCoins,
+          },
+          totalEarned: {
+            increment: astrologerCoins,
+          },
+          totalCommission: {
+            increment: commissionCoins,
+          },
+        },
+      });
+
+      // Read updated astrologer balance.
+      const astrologerWallet =
+        await tx.astrologerWallet.findUniqueOrThrow({
           where: {
             astrologerId: stream.astrologerId,
           },
-          create: {
-            astrologerId: stream.astrologerId,
-            balanceCoins: commissionCoins,
-          },
-          update: {},
         });
 
-        // -------------------------------------------------
-        // Debit user wallet only when sufficient coins exist.
-        // -------------------------------------------------
+      // -------------------------------------------------
+      // Record user wallet debit.
+      // -------------------------------------------------
 
-        const debit = await tx.userWallet.updateMany({
-          where: {
-            userId: user.id,
-            balanceCoins: {
-              gte: totalCoins,
-            },
-          },
-          data: {
-            balanceCoins: {
-              decrement: totalCoins,
-            },
-          },
-        });
+      await tx.walletTransaction.create({
+        data: {
+          userWalletId: userWallet.id,
+          type: "DEBIT",
+          coins: totalCoins,
+          amount: totalCoins,
+          updatedBalance: userWallet.balanceCoins,
+          description: `Live gift: ${gift.name} x${quantity}`,
+        },
+      });
 
-        if (debit.count !== 1) {
-          throw new Error("Insufficient wallet balance");
-        }
+      // -------------------------------------------------
+      // Record astrologer wallet credit.
+      // -------------------------------------------------
 
-        // Read updated user balance.
-        const userWallet =
-          await tx.userWallet.findUniqueOrThrow({
-            where: {
-              userId: user.id,
-            },
-          });
-
-        // -------------------------------------------------
-        // Credit astrologer earnings.
-        // -------------------------------------------------
-
-        await tx.astrologerWallet.update({
-          where: {
-            astrologerId: stream.astrologerId,
-          },
-          data: {
-            balanceCoins: {
-              increment: astrologerCoins,
-            },
-            totalEarned: {
-              increment: astrologerCoins,
-            },
-            totalCommission: {
-              increment: commissionCoins,
-            },
-          },
-        });
-
-        // Read updated astrologer balance.
-        const astrologerWallet =
-          await tx.astrologerWallet.findUniqueOrThrow({
-            where: {
-              astrologerId: stream.astrologerId,
-            },
-          });
-
-        // -------------------------------------------------
-        // Record user wallet debit.
-        // -------------------------------------------------
-
+      if (astrologerCoins > 0) {
         await tx.walletTransaction.create({
           data: {
-            userWalletId: userWallet.id,
-            type: "DEBIT",
-            coins: totalCoins,
-            amount: totalCoins,
-            updatedBalance: userWallet.balanceCoins,
-            description: `Live gift: ${gift.name} x${quantity}`,
+            astrologerWalletId: astrologerWallet.id,
+            type: "CREDIT",
+            coins: astrologerCoins,
+            amount: astrologerCoins,
+            updatedBalance: astrologerWallet.balanceCoins,
+            description: `Live gift earnings: ${gift.name} x${quantity}`,
+          },
+        });
+      }
+
+      // -------------------------------------------------
+      // Record live gift transaction.
+      // -------------------------------------------------
+
+      const giftTransaction =
+        await tx.liveGiftTransaction.create({
+          data: {
+            streamId: stream.id,
+            senderId: user.id,
+            astrologerId: stream.astrologerId,
+            giftId: gift.id,
+            quantity,
+            totalCoins,
+            status: "SUCCESS",
           },
         });
 
-        // -------------------------------------------------
-        // Record astrologer wallet credit.
-        // -------------------------------------------------
-
-        if (astrologerCoins > 0) {
-          await tx.walletTransaction.create({
-            data: {
-              astrologerWalletId: astrologerWallet.id,
-              type: "CREDIT",
-              coins: astrologerCoins,
-              amount: astrologerCoins,
-              updatedBalance: astrologerWallet.balanceCoins,
-              description: `Live gift earnings: ${gift.name} x${quantity}`,
-            },
-          });
-        }
-
-        // -------------------------------------------------
-        // Record live gift transaction.
-        // -------------------------------------------------
-
-        const giftTransaction =
-          await tx.liveGiftTransaction.create({
-            data: {
-              streamId: stream.id,
-              senderId: user.id,
-              astrologerId: stream.astrologerId,
-              giftId: gift.id,
-              quantity,
-              totalCoins,
-              status: "SUCCESS",
-            },
-          });
-
-        // Return values from the committed transaction.
-        return {
-          giftTransaction,
-          userBalance: userWallet.balanceCoins,
-          astrologerBalance: astrologerWallet.balanceCoins,
-          totalCoins,
-          astrologerCoins,
-          commissionCoins,
-        };
-      }
-    );
+      return {
+        giftTransaction,
+        userBalance: userWallet.balanceCoins,
+        astrologerBalance: astrologerWallet.balanceCoins,
+        totalCoins,
+        astrologerCoins,
+        commissionCoins,
+      };
+    });
 
     // =====================================================
-    // 6. SEND AGORA CHAT GIFT NOTIFICATION
+    // 7. SEND AGORA CHAT GIFT NOTIFICATION
     // =====================================================
     //
-    // This happens after the database transaction commits.
-    // A Chat notification failure must not undo a successful
-    // wallet transaction.
+    // The wallet transaction has already committed.
+    // A Chat failure should not undo a successful gift.
+    //
+    // senderName = actual display name shown in chat.
+    // senderUsername = registered Agora Chat username.
     //
     // IMPORTANT:
-    // senderUsername must match the actual registered Agora
-    // Chat username for this user.
+    // Verify that user_${user.id} is the username registered
+    // with Agora Chat. If registration uses another format,
+    // use that exact username instead.
     // =====================================================
 
     try {
       await sendAgoraChatRoomGiftNotification({
         chatRoomId: stream.chatRoomId,
-        senderUsername: user.id,
+
+        // Agora Chat account username, not the display name.
+        senderUsername: `user_${user.id}`,
+
+        // Application user ID.
         senderId: user.id,
+
+        // Actual sender name for the chat UI.
+        senderName,
+
         giftName: gift.name,
         icon: gift.icon,
         quantity,
         totalCoins,
       });
 
-      console.log("Agora gift notification sent successfully");
+      console.log("Agora gift notification sent successfully:", {
+        senderName,
+        giftName: gift.name,
+        quantity,
+        totalCoins,
+      });
     } catch (error) {
-      console.error(
-        "Agora gift notification failed:",
-        error.response?.data || error.message
-      );
+      console.error("Agora gift notification failed:", {
+        message: error.message,
+        response: error.response?.data,
+        senderName,
+        chatRoomId: stream.chatRoomId,
+      });
     }
 
     // =====================================================
-    // 7. RETURN RESPONSE
+    // 8. RETURN RESPONSE
     // =====================================================
 
     return {
@@ -6283,11 +6324,7 @@ return {
       transactionId: result.giftTransaction.id,
     };
   } catch (error) {
-    console.error(
-      "sendLiveGift failed:",
-      error.message
-    );
-
+    console.error("sendLiveGift failed:", error.message);
     throw error;
   }
 },
