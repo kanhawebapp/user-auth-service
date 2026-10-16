@@ -6103,6 +6103,7 @@ return {
       commissionCoins,
     });
 
+    
     // =====================================================
     // 6. ATOMIC WALLET UPDATES AND TRANSACTION RECORDS
     // =====================================================
