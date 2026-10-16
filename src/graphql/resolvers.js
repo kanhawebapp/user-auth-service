@@ -5931,7 +5931,7 @@ return {
     //   }
     // },
 
-    sendLiveGift: async (_, { streamId, giftId, quantity }, { user }) => {
+  sendLiveGift: async (_, { streamId, giftId, quantity }, { user }) => {
   try {
     console.log("========== sendLiveGift ==========");
     console.log("User ID:", user?.id);
@@ -5962,13 +5962,8 @@ return {
     // =====================================================
     // 2. FETCH SENDER DETAILS
     // =====================================================
-    //
-    // Fetch the user's actual name instead of displaying
-    // their UUID in the live chat.
-    //
-    // IMPORTANT:
-    // Ensure these fields exist in your Prisma User model.
-    // Remove or replace fields that your schema does not have.
+    // Your Prisma User model does not have name/displayName.
+    // Use available fields instead.
     // =====================================================
 
     const sender = await prisma.user.findUnique({
@@ -5977,10 +5972,9 @@ return {
       },
       select: {
         id: true,
-        name: true,
-        displayName: true,
-        firstName: true,
-        lastName: true,
+        mobile: true,
+        countryCode: true,
+        profileImage: true,
       },
     });
 
@@ -5988,16 +5982,11 @@ return {
       throw new Error("Gift sender not found");
     }
 
-    const senderName =
-      sender.displayName?.trim() ||
-      sender.name?.trim() ||
-      [sender.firstName, sender.lastName]
-        .filter(Boolean)
-        .join(" ")
-        .trim() ||
-      "User";
+    const senderName = sender.mobile
+      ? `${sender.countryCode || ""}${sender.mobile}`
+      : "User";
 
-    console.log("Gift sender:", {
+    console.log("Gift sender details:", {
       senderId: sender.id,
       senderName,
     });
@@ -6087,7 +6076,7 @@ return {
       throw new Error("Invalid astrologer gift commission");
     }
 
-    // Calculate astrologer's earnings and platform commission.
+    // Calculate astrologer earnings and platform commission.
     const astrologerCoins = Math.floor(
       (totalCoins * (100 - commissionPercent)) / 100
     );
@@ -6103,16 +6092,12 @@ return {
       commissionCoins,
     });
 
-    
     // =====================================================
     // 6. ATOMIC WALLET UPDATES AND TRANSACTION RECORDS
     // =====================================================
 
     const result = await prisma.$transaction(async (tx) => {
-      // -------------------------------------------------
       // Create user wallet if it does not exist.
-      // -------------------------------------------------
-
       await tx.userWallet.upsert({
         where: {
           userId: user.id,
@@ -6124,10 +6109,7 @@ return {
         update: {},
       });
 
-      // -------------------------------------------------
       // Create astrologer wallet if it does not exist.
-      // -------------------------------------------------
-
       await tx.astrologerWallet.upsert({
         where: {
           astrologerId: stream.astrologerId,
@@ -6139,10 +6121,7 @@ return {
         update: {},
       });
 
-      // -------------------------------------------------
-      // Debit user wallet if sufficient coins exist.
-      // -------------------------------------------------
-
+      // Debit the user's wallet only if sufficient coins exist.
       const debit = await tx.userWallet.updateMany({
         where: {
           userId: user.id,
@@ -6161,17 +6140,14 @@ return {
         throw new Error("Insufficient wallet balance");
       }
 
-      // Read updated user balance.
+      // Fetch updated user wallet.
       const userWallet = await tx.userWallet.findUniqueOrThrow({
         where: {
           userId: user.id,
         },
       });
 
-      // -------------------------------------------------
       // Credit astrologer wallet.
-      // -------------------------------------------------
-
       await tx.astrologerWallet.update({
         where: {
           astrologerId: stream.astrologerId,
@@ -6189,7 +6165,7 @@ return {
         },
       });
 
-      // Read updated astrologer balance.
+      // Fetch updated astrologer wallet.
       const astrologerWallet =
         await tx.astrologerWallet.findUniqueOrThrow({
           where: {
@@ -6197,10 +6173,7 @@ return {
           },
         });
 
-      // -------------------------------------------------
       // Record user wallet debit.
-      // -------------------------------------------------
-
       await tx.walletTransaction.create({
         data: {
           userWalletId: userWallet.id,
@@ -6212,10 +6185,7 @@ return {
         },
       });
 
-      // -------------------------------------------------
       // Record astrologer wallet credit.
-      // -------------------------------------------------
-
       if (astrologerCoins > 0) {
         await tx.walletTransaction.create({
           data: {
@@ -6229,10 +6199,7 @@ return {
         });
       }
 
-      // -------------------------------------------------
-      // Record live gift transaction.
-      // -------------------------------------------------
-
+      // Record the live gift transaction.
       const giftTransaction =
         await tx.liveGiftTransaction.create({
           data: {
@@ -6259,30 +6226,21 @@ return {
     // =====================================================
     // 7. SEND AGORA CHAT GIFT NOTIFICATION
     // =====================================================
-    //
-    // The wallet transaction has already committed.
-    // A Chat failure should not undo a successful gift.
-    //
-    // senderName = actual display name shown in chat.
-    // senderUsername = registered Agora Chat username.
-    //
-    // IMPORTANT:
-    // Verify that user_${user.id} is the username registered
-    // with Agora Chat. If registration uses another format,
-    // use that exact username instead.
+    // This runs after the wallet transaction commits.
+    // Notification failure will not roll back the gift.
     // =====================================================
 
     try {
       await sendAgoraChatRoomGiftNotification({
         chatRoomId: stream.chatRoomId,
 
-        // Agora Chat account username, not the display name.
+        // Must match the username registered with Agora Chat.
         senderUsername: `user_${user.id}`,
 
         // Application user ID.
         senderId: user.id,
 
-        // Actual sender name for the chat UI.
+        // Sender display value for the chat notification.
         senderName,
 
         giftName: gift.name,
