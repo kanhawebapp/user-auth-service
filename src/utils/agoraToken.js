@@ -438,6 +438,7 @@ const sendAgoraChatRoomGiftNotification = async ({
   chatRoomId,
   senderUsername,
   senderId,
+  senderName,
   giftName,
   icon = null,
   quantity,
@@ -483,7 +484,7 @@ const sendAgoraChatRoomGiftNotification = async ({
       {
         target_type: "chatrooms",
         target: [String(chatRoomId)],
-        from: String(senderUsername),
+        from: String(senderName),
         msg: {
           type: "txt",
           msg: `${giftName} x${quantity}`,
