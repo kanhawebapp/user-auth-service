@@ -6235,7 +6235,7 @@ return {
         chatRoomId: stream.chatRoomId,
 
         // Must match the username registered with Agora Chat.
-        senderUsername: `senderName_${user.id}`,
+        senderUsername: `${senderName}_${user.id}`,
 
         // Application user ID.
         senderId: user.id,
