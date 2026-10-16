@@ -5972,6 +5972,7 @@ return {
       },
       select: {
         id: true,
+        name:true,
         mobile: true,
         countryCode: true,
         profileImage: true,
@@ -5982,9 +5983,8 @@ return {
       throw new Error("Gift sender not found");
     }
 
-    const senderName = sender.mobile
-      ? `${sender.countryCode || ""}${sender.mobile}`
-      : "User";
+    const senderName = sender?.name || sender?.mobile;
+      
 
     console.log("Gift sender details:", {
       senderId: sender.id,
