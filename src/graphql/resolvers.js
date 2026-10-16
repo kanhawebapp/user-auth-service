@@ -5983,7 +5983,18 @@ return {
       throw new Error("Gift sender not found");
     }
 
-    const senderName = sender?.name || sender?.mobile;
+    const senderName = (sender?.name || "user")
+      .trim()
+      .toLowerCase()
+      .normalize("NFKD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "")
+      .slice(0, 40);
+
+    console.log("user nameeeeeeeeeeeeeeeeeeeeeeeeeeeee",senderName);
+   // const chatUserId = `${normalizedName || "user"}_${dbUser.id}`;
+    //const senderName = sender?.name || sender?.mobile;
       
 
     console.log("Gift sender details:", {
@@ -6233,9 +6244,8 @@ return {
     try {
       await sendAgoraChatRoomGiftNotification({
         chatRoomId: stream.chatRoomId,
-
         // Must match the username registered with Agora Chat.
-        senderUsername: `${senderName}_${user.id}`,
+        senderUsername: `user_${user.id}`,
 
         // Application user ID.
         senderId: user.id,
