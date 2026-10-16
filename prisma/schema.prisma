@@ -1581,23 +1581,24 @@ model LiveStream {
   id String @id @default(uuid())
 
   astrologerId String
-  astrologer Astrologer @relation(fields: [astrologerId], references: [id], onDelete: Cascade)
+  astrologer   Astrologer @relation(fields: [astrologerId], references: [id], onDelete: Cascade)
 
-  title String
-
+  title       String
   channelName String
-
-  // ADD THIS
-  chatRoomId String?
+  chatRoomId  String?
 
   status LiveStatus @default(SCHEDULED)
 
   scheduledAt DateTime?
+  scheduledEndAt  DateTime?
+  startedAt   DateTime?
+  endedAt     DateTime?
+  totalViews   Int        @default(0)
 
   createdAt DateTime @default(now())
-
-  endedAt DateTime?
+  updatedAt DateTime @updatedAt
 }
+
 
 enum LiveStatus {
   SCHEDULED
@@ -1618,26 +1619,24 @@ model LiveGift {
 }
 
 model LiveGiftTransaction {
-  id          String   @id @default(uuid())
-
-  streamId    String
-  senderId    String
+  id           String   @id @default(uuid())
+  streamId     String
+  senderId     String
   astrologerId String
-  giftId      String
+  giftId       String
 
-  quantity    Int      @default(1)
-  totalCoins  Int
+  quantity  Int      @default(1)
+  totalCoins Int
 
-  status      String   @default("SUCCESS")
-  createdAt   DateTime @default(now())
+  status    String   @default("SUCCESS")
+  createdAt DateTime @default(now())
 
-  gift        LiveGift @relation(fields: [giftId], references: [id])
+  gift LiveGift @relation(fields: [giftId], references: [id])
 
   @@index([streamId, createdAt])
   @@index([senderId, createdAt])
   @@index([astrologerId, createdAt])
 }
-
 
 
 model CallRecording {

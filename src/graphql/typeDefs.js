@@ -1258,11 +1258,13 @@ type VerifyServiceCouponResponse {
   }
  type LiveJoinResponse {
   id: ID!
+  astrologerId: ID!
+  totalViews: Int!
 
-  rtcToken: String!
-  uid: Int!
   appId: String!
   channelName: String!
+  uid: Int!
+  rtcToken: String!
 
   chatUserId: String!
   chatToken: String!

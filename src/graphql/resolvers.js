@@ -3001,20 +3001,52 @@ module.exports = {
       throw new Error("Failed to generate Agora Chat user token");
     }
 
-    // 10. Return data required by the viewer frontend
-    currentStep = "prepare joinLive response";
+    // 10. Increment the total views after successfully preparing
+// the RTC and Chat credentials.
 
-    return {
-      id: stream.id,
-      appId,
-      channelName: stream.channelName,
-      uid,
-      rtcToken,
-      chatUserId,
-      chatToken,
-      chatRoomId: stream.chatRoomId,
-      chatAppKey,
-    };
+currentStep = "increment live stream views";
+
+const updatedStream = await prisma.liveStream.update({
+  where: {
+    id: stream.id,
+  },
+  data: {
+    totalViews: {
+      increment: 1,
+    },
+  },
+  select: {
+    totalViews: true,
+  },
+});
+
+// 11. Return data required by the viewer frontend.
+
+currentStep = "prepare joinLive response";
+
+return {
+  id: stream.id,
+
+  // Astrologer details for Follow / Unfollow
+  astrologerId: stream.astrologerId,
+
+  // Stream information
+  channelName: stream.channelName,
+
+  // Total views
+  totalViews: updatedStream.totalViews,
+
+  // Agora RTC
+  appId,
+  uid,
+  rtcToken,
+
+  // Agora Chat
+  chatUserId,
+  chatToken,
+  chatRoomId: stream.chatRoomId,
+  chatAppKey,
+};
   } catch (error) {
     // Never log tokens, passwords, or certificates.
     console.error("joinLive failed", {
