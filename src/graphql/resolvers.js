@@ -3375,6 +3375,7 @@ pujaService: async (_, { id, slug }) => {
 
   return booking;
 },
+
   },
   //----------------start code for mutation ----------------------------
   Mutation: {
@@ -6503,6 +6504,73 @@ pujaService: async (_, { id, slug }) => {
       comment: comment.trim(),
       image: image?.trim() || null,
       status: "PENDING",
+    },
+  });
+},
+createPujaBooking: async (_, { input }, { user }) => {
+  if (!user?.id) {
+    throw new GraphQLError("Please login to book a puja.");
+  }
+
+  const { pujaId, quantity, mantraOptionId } = input;
+
+  if (!pujaId) {
+    throw new GraphQLError("Puja ID is required.");
+  }
+
+  if (!Number.isInteger(quantity) || quantity < 1 || quantity > 20) {
+    throw new GraphQLError("Quantity must be between 1 and 20.");
+  }
+
+  const puja = await prisma.pujaService.findUnique({
+    where: { id: pujaId },
+    include: {
+      mantraOptions: true,
+    },
+  });
+
+  if (!puja) {
+    throw new GraphQLError("Puja service not found.");
+  }
+
+  const unitPrice = Number(puja.price);
+
+  if (!Number.isFinite(unitPrice) || unitPrice < 0) {
+    throw new GraphQLError("Invalid puja price.");
+  }
+
+  let selectedMantra = null;
+
+  if (mantraOptionId) {
+    selectedMantra = puja.mantraOptions.find(
+      (option) => option.id === mantraOptionId,
+    );
+
+    if (!selectedMantra) {
+      throw new GraphQLError(
+        "Selected mantra is not available for this puja.",
+      );
+    }
+  } else {
+    selectedMantra = puja.mantraOptions[0] ?? null;
+  }
+
+  const totalAmount = unitPrice * quantity;
+
+  return prisma.pujaBooking.create({
+    data: {
+      userId: user.id,
+      pujaId: puja.id,
+
+      mantraOptionId: selectedMantra?.id ?? null,
+      mantraOptionName: selectedMantra?.name ?? null,
+
+      quantity,
+      unitPrice,
+      totalAmount,
+
+      paymentStatus: "PENDING",
+      bookingStatus: "PENDING",
     },
   });
 },
