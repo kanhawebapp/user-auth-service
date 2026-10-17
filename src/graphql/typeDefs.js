@@ -1539,10 +1539,11 @@ type LeaveLiveResponse {
     createdAt: String!
     updatedAt: String!
   }
-    type PujaBooking {
+  type PujaBooking {
   id: ID!
   userId: ID!
   pujaId: ID!
+  puja: PujaService
   mantraOptionId: String
   mantraOptionName: String
   quantity: Int!

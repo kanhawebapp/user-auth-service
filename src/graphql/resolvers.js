@@ -44,39 +44,37 @@ module.exports = {
   JSON: GraphQLJSON,
   Upload: GraphQLUpload,
   Query: {
-
-pujaServices: async () => {
-  return prisma.pujaService.findMany({
-    include: {
-      mantraOptions: true,
-      faqs: true,
-      reviews: true,
+    pujaServices: async () => {
+      return prisma.pujaService.findMany({
+        include: {
+          mantraOptions: true,
+          faqs: true,
+          reviews: true,
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+      });
     },
-    orderBy: {
-      createdAt: "desc",
+
+    pujaService: async (_, { id, slug }) => {
+      if (!id && !slug) {
+        throw new GraphQLError("Provide either a Puja ID or slug.");
+      }
+
+      if (id && slug) {
+        throw new GraphQLError("Provide either ID or slug, not both.");
+      }
+
+      return prisma.pujaService.findUnique({
+        where: id ? { id } : { slug },
+        include: {
+          mantraOptions: true,
+          faqs: true,
+          reviews: true,
+        },
+      });
     },
-  });
-},
-
-
-pujaService: async (_, { id, slug }) => {
-  if (!id && !slug) {
-    throw new GraphQLError("Provide either a Puja ID or slug.");
-  }
-
-  if (id && slug) {
-    throw new GraphQLError("Provide either ID or slug, not both.");
-  }
-
-  return prisma.pujaService.findUnique({
-    where: id ? { id } : { slug },
-    include: {
-      mantraOptions: true,
-      faqs: true,
-      reviews: true,
-    },
-  });
-},
     getUsersDetails: async (
       _,
       { page = 1, limit = 10, search = "" },
@@ -3357,7 +3355,7 @@ pujaService: async (_, { id, slug }) => {
         throw new Error(error.message || "Failed to fetch payment invoice");
       }
     },
-    getPujaBooking: async (_, { bookingId }, { user }) => {
+  getPujaBooking: async (_, { bookingId }, { user }) => {
   if (!user?.id) {
     throw new GraphQLError("Unauthorized.");
   }
@@ -3367,6 +3365,13 @@ pujaService: async (_, { id, slug }) => {
       id: bookingId,
       userId: user.id,
     },
+    include: {
+      puja: {
+        select: {
+          title: true,
+        },
+      },
+    },
   });
 
   if (!booking) {
@@ -3375,7 +3380,6 @@ pujaService: async (_, { id, slug }) => {
 
   return booking;
 },
-
   },
   //----------------start code for mutation ----------------------------
   Mutation: {
@@ -6438,141 +6442,133 @@ pujaService: async (_, { id, slug }) => {
       }
     },
 
-  createPujaReview: async (_, { input }) => {
-  const {
-    pujaId,
-    userId,
-    userName,
-    email,
-    title,
-    rating,
-    comment,
-    image,
-  } = input;
+    createPujaReview: async (_, { input }) => {
+      const { pujaId, userId, userName, email, title, rating, comment, image } =
+        input;
 
-  if (!pujaId) {
-    throw new GraphQLError("Puja ID is required.");
-  }
+      if (!pujaId) {
+        throw new GraphQLError("Puja ID is required.");
+      }
 
-  if (!userId) {
-    throw new GraphQLError("User ID is required.");
-  }
+      if (!userId) {
+        throw new GraphQLError("User ID is required.");
+      }
 
-  if (!userName?.trim()) {
-    throw new GraphQLError("Display name is required.");
-  }
+      if (!userName?.trim()) {
+        throw new GraphQLError("Display name is required.");
+      }
 
-  if (!title?.trim()) {
-    throw new GraphQLError("Review title is required.");
-  }
+      if (!title?.trim()) {
+        throw new GraphQLError("Review title is required.");
+      }
 
-  if (!comment?.trim()) {
-    throw new GraphQLError("Review content is required.");
-  }
+      if (!comment?.trim()) {
+        throw new GraphQLError("Review content is required.");
+      }
 
-  if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
-    throw new GraphQLError("Rating must be between 1 and 5.");
-  }
+      if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+        throw new GraphQLError("Rating must be between 1 and 5.");
+      }
 
-  const [puja, user] = await Promise.all([
-    prisma.pujaService.findUnique({
-      where: { id: pujaId },
-      select: { id: true },
-    }),
-    prisma.user.findUnique({
-      where: { id: userId },
-      select: { id: true },
-    }),
-  ]);
+      const [puja, user] = await Promise.all([
+        prisma.pujaService.findUnique({
+          where: { id: pujaId },
+          select: { id: true },
+        }),
+        prisma.user.findUnique({
+          where: { id: userId },
+          select: { id: true },
+        }),
+      ]);
 
-  if (!puja) {
-    throw new GraphQLError("Puja service not found.");
-  }
+      if (!puja) {
+        throw new GraphQLError("Puja service not found.");
+      }
 
-  if (!user) {
-    throw new GraphQLError("User not found.");
-  }
+      if (!user) {
+        throw new GraphQLError("User not found.");
+      }
 
-  return prisma.pujaReview.create({
-    data: {
-      pujaId,
-      userId,
-      userName: userName.trim(),
-      email: email?.trim() || null,
-      title: title.trim(),
-      rating,
-      comment: comment.trim(),
-      image: image?.trim() || null,
-      status: "PENDING",
+      return prisma.pujaReview.create({
+        data: {
+          pujaId,
+          userId,
+          userName: userName.trim(),
+          email: email?.trim() || null,
+          title: title.trim(),
+          rating,
+          comment: comment.trim(),
+          image: image?.trim() || null,
+          status: "PENDING",
+        },
+      });
     },
-  });
-},
-createPujaBooking: async (_, { input }, { user }) => {
-  if (!user?.id) {
-    throw new GraphQLError("Please login to book a puja.");
-  }
+    createPujaBooking: async (_, { input }, { user }) => {
+      if (!user?.id) {
+        throw new GraphQLError("Please login to book a puja.");
+      }
 
-  const { pujaId, quantity, mantraOptionId } = input;
+      const { pujaId, quantity, mantraOptionId } = input;
 
-  if (!pujaId) {
-    throw new GraphQLError("Puja ID is required.");
-  }
+      if (!pujaId) {
+        throw new GraphQLError("Puja ID is required.");
+      }
 
-  if (!Number.isInteger(quantity) || quantity < 1 || quantity > 20) {
-    throw new GraphQLError("Quantity must be between 1 and 20.");
-  }
+      if (!Number.isInteger(quantity) || quantity < 1 || quantity > 20) {
+        throw new GraphQLError("Quantity must be between 1 and 20.");
+      }
 
-  const puja = await prisma.pujaService.findUnique({
-    where: { id: pujaId },
-    include: {
-      mantraOptions: true,
+      const puja = await prisma.pujaService.findUnique({
+        where: { id: pujaId },
+        include: {
+          mantraOptions: true,
+        },
+      });
+
+      if (!puja) {
+        throw new GraphQLError("Puja service not found.");
+      }
+
+      const unitPrice = Number(puja.price);
+
+      if (!Number.isFinite(unitPrice) || unitPrice < 0) {
+        throw new GraphQLError("Invalid puja price.");
+      }
+
+      let selectedMantra = null;
+
+      if (mantraOptionId) {
+        selectedMantra = puja.mantraOptions.find(
+          (option) => option.id === mantraOptionId,
+        );
+
+        if (!selectedMantra) {
+          throw new GraphQLError(
+            "Selected mantra is not available for this puja.",
+          );
+        }
+      } else {
+        selectedMantra = puja.mantraOptions[0] ?? null;
+      }
+
+      const totalAmount = unitPrice * quantity;
+
+      return prisma.pujaBooking.create({
+        data: {
+          userId: user.id,
+          pujaId: puja.id,
+
+          mantraOptionId: selectedMantra?.id ?? null,
+          mantraOptionName: selectedMantra?.name ?? null,
+
+          quantity,
+          unitPrice,
+          totalAmount,
+
+          paymentStatus: "PENDING",
+          bookingStatus: "PENDING",
+        },
+      });
     },
-  });
-
-  if (!puja) {
-    throw new GraphQLError("Puja service not found.");
-  }
-
-  const unitPrice = Number(puja.price);
-
-  if (!Number.isFinite(unitPrice) || unitPrice < 0) {
-    throw new GraphQLError("Invalid puja price.");
-  }
-
-  let selectedMantra = null;
-
-  if (mantraOptionId) {
-    selectedMantra = puja.mantraOptions.find(
-      (option) => option.id === mantraOptionId,
-    );
-
-    if (!selectedMantra) {
-      throw new GraphQLError(
-        "Selected mantra is not available for this puja.",
-      );
-    }
-  } else {
-    selectedMantra = puja.mantraOptions[0] ?? null;
-  }
-
-  const totalAmount = unitPrice * quantity;
-
-  return prisma.pujaBooking.create({
-    data: {
-      userId: user.id,
-      pujaId: puja.id,
-
-      mantraOptionId: selectedMantra?.id ?? null,
-      mantraOptionName: selectedMantra?.name ?? null,
-
-      quantity,
-      unitPrice,
-      totalAmount,
-
-      paymentStatus: "PENDING",
-      bookingStatus: "PENDING",
-    },
-  });
-},
   },
 };
