@@ -44,8 +44,10 @@ module.exports = {
   JSON: GraphQLJSON,
   Upload: GraphQLUpload,
   Query: {
-  pujaServices: async (_, __, context) => {
-  return context.prisma.pujaService.findMany({
+pujaServices: async (_, __, context) => {
+  const prisma = context.prisma;
+
+  return prisma.pujaService.findMany({
     include: pujaInclude,
     orderBy: {
       createdAt: "desc",
