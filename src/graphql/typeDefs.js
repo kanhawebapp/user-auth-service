@@ -1528,11 +1528,9 @@ type LeaveLiveResponse {
   
   type Query {
       # puja services
-    pujaServices: [PujaService!]!
-
-    pujaService(id: ID, slug: String): PujaService
-
-    pujaReviews(pujaId: ID!): [PujaReview!]!
+   pujaServices: [PujaService!]!
+  pujaService(id: ID, slug: String): PujaService
+  pujaReviews(pujaId: ID!): [PujaReview!]!
    getPaymentInvoice(transactionId: ID!): PaymentInvoice
     getAstrologerCategories: [AstrologerCategory!]!
     getActiveSkills: [Skill!]!
