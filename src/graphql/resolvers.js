@@ -6419,50 +6419,74 @@ pujaService: async (_, { id, slug }) => {
       }
     },
 
-        createPujaReview: async (_, { input }) => {
-      const { pujaId, userName, email, title, rating, comment, image } = input;
+  createPujaReview: async (_, { input }) => {
+  const {
+    pujaId,
+    userId,
+    userName,
+    email,
+    title,
+    rating,
+    comment,
+    image,
+  } = input;
 
-      if (!pujaId) {
-        throw new GraphQLError("Puja ID is required.");
-      }
+  if (!pujaId) {
+    throw new GraphQLError("Puja ID is required.");
+  }
 
-      if (!userName?.trim()) {
-        throw new GraphQLError("Display name is required.");
-      }
+  if (!userId) {
+    throw new GraphQLError("User ID is required.");
+  }
 
-      if (!title?.trim()) {
-        throw new GraphQLError("Review title is required.");
-      }
+  if (!userName?.trim()) {
+    throw new GraphQLError("Display name is required.");
+  }
 
-      if (!comment?.trim()) {
-        throw new GraphQLError("Review content is required.");
-      }
+  if (!title?.trim()) {
+    throw new GraphQLError("Review title is required.");
+  }
 
-      if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
-        throw new GraphQLError("Rating must be between 1 and 5.");
-      }
+  if (!comment?.trim()) {
+    throw new GraphQLError("Review content is required.");
+  }
 
-      const puja = await prisma.pujaService.findUnique({
-        where: { id: pujaId },
-        select: { id: true },
-      });
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+    throw new GraphQLError("Rating must be between 1 and 5.");
+  }
 
-      if (!puja) {
-        throw new GraphQLError("Puja service not found.");
-      }
+  const [puja, user] = await Promise.all([
+    prisma.pujaService.findUnique({
+      where: { id: pujaId },
+      select: { id: true },
+    }),
+    prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true },
+    }),
+  ]);
 
-      return prisma.pujaReview.create({
-        data: {
-          pujaId,
-          userName: userName.trim(),
-          email: email?.trim() || null,
-          title: title.trim(),
-          rating,
-          comment: comment.trim(),
-          image: image?.trim() || null,
-          status: "PENDING",
-        },
-      });
+  if (!puja) {
+    throw new GraphQLError("Puja service not found.");
+  }
+
+  if (!user) {
+    throw new GraphQLError("User not found.");
+  }
+
+  return prisma.pujaReview.create({
+    data: {
+      pujaId,
+      userId,
+      userName: userName.trim(),
+      email: email?.trim() || null,
+      title: title.trim(),
+      rating,
+      comment: comment.trim(),
+      image: image?.trim() || null,
+      status: "PENDING",
     },
+  });
+},
   },
 };
