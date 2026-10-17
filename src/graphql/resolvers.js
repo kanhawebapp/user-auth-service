@@ -58,20 +58,25 @@ pujaServices: async () => {
   });
 },
 
-  
-    pujaService: async (_, { id, slug }) => {
-      if (!id && !slug) {
-        throw new GraphQLError("Provide either a Puja ID or slug.");
-      }
 
-      if (id && slug) {
-        throw new GraphQLError("Provide either ID or slug, not both.");
-      }
+pujaService: async (_, { id, slug }) => {
+  if (!id && !slug) {
+    throw new GraphQLError("Provide either a Puja ID or slug.");
+  }
 
-      return prisma.pujaService.findUnique({
-        where: id ? { id } : { slug },
-      });
+  if (id && slug) {
+    throw new GraphQLError("Provide either ID or slug, not both.");
+  }
+
+  return prisma.pujaService.findUnique({
+    where: id ? { id } : { slug },
+    include: {
+      mantraOptions: true,
+      faqs: true,
+      reviews: true,
     },
+  });
+},
     getUsersDetails: async (
       _,
       { page = 1, limit = 10, search = "" },
