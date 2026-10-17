@@ -44,31 +44,34 @@ module.exports = {
   JSON: GraphQLJSON,
   Upload: GraphQLUpload,
   Query: {
-// Get all Puja Services
+
 pujaServices: async () => {
   return prisma.pujaService.findMany({
-    include: pujaInclude,
+    include: {
+      mantraOptions: true,
+      faqs: true,
+      reviews: true,
+    },
     orderBy: {
       createdAt: "desc",
     },
   });
 },
 
-// Get single Puja Service by ID or slug
-pujaService: async (_, { id, slug }) => {
-  if (!id && !slug) {
-    throw new GraphQLError("Provide either a Puja ID or slug.");
-  }
+  
+    pujaService: async (_, { id, slug }) => {
+      if (!id && !slug) {
+        throw new GraphQLError("Provide either a Puja ID or slug.");
+      }
 
-  if (id && slug) {
-    throw new GraphQLError("Provide either ID or slug, not both.");
-  }
+      if (id && slug) {
+        throw new GraphQLError("Provide either ID or slug, not both.");
+      }
 
-  return prisma.pujaService.findUnique({
-    where: id ? { id } : { slug },
-    include: pujaInclude,
-  });
-},
+      return prisma.pujaService.findUnique({
+        where: id ? { id } : { slug },
+      });
+    },
     getUsersDetails: async (
       _,
       { page = 1, limit = 10, search = "" },
