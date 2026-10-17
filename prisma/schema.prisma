@@ -179,6 +179,7 @@ model User {
   source               String?
   callRecordings CallRecording[]
   couponRedemptions CouponRedemption[]
+  pujaBookings PujaBooking[]
 
   @@unique([countryCode, mobile])
 }
@@ -1918,6 +1919,7 @@ model PujaService {
 
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
+  bookings PujaBooking[]
 
   @@index([category])
   @@index([createdAt])
@@ -1973,4 +1975,33 @@ enum PujaReviewStatus {
   PENDING
   APPROVED
   REJECTED
+}
+
+model PujaBooking {
+  id String @id @default(cuid())
+
+  userId String
+  user   User @relation(fields: [userId], references: [id])
+
+  pujaId String
+  puja   PujaService @relation(fields: [pujaId], references: [id])
+
+  // Store the selected option snapshot
+  mantraOptionId   String?
+  mantraOptionName String?
+
+  quantity   Int
+  unitPrice  Float
+  totalAmount Float
+
+  paymentStatus PaymentStatus @default(PENDING)
+  bookingStatus BookingStatus @default(PENDING)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([pujaId])
+  @@index([paymentStatus])
+  @@index([bookingStatus])
 }

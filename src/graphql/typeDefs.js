@@ -1538,6 +1538,25 @@ type LeaveLiveResponse {
     createdAt: String!
     updatedAt: String!
   }
+    type PujaBooking {
+  id: ID!
+  userId: ID!
+  pujaId: ID!
+  mantraOptionId: String
+  mantraOptionName: String
+  quantity: Int!
+  unitPrice: Float!
+  totalAmount: Float!
+  paymentStatus: String!
+  bookingStatus: String!
+  createdAt: String!
+  updatedAt: String!
+}
+  input CreatePujaBookingInput {
+  pujaId: ID!
+  quantity: Int!
+  mantraOptionId: String
+}
   
   type Query {
       # puja services
@@ -1647,6 +1666,7 @@ type LeaveLiveResponse {
      getSimilarAstrologers(astrologerId: ID!): [Astrologer!]!
 
      getLiveGifts: [LiveGift!]!
+     getPujaBooking(bookingId: ID!): PujaBooking
   }
 
   type Mutation {
@@ -1726,6 +1746,8 @@ type LeaveLiveResponse {
   leaveLive(channelName: String!): LeaveLiveResponse!
   
   createPujaReview(input: CreatePujaReviewInput!): PujaReview!
+
+   createPujaBooking(input: CreatePujaBookingInput!): PujaBooking!
 
   }
 `;
