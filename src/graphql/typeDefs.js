@@ -1464,6 +1464,16 @@ type LeaveLiveResponse {
     APPROVED
     REJECTED
   }
+  
+  input CreatePujaReviewInput {
+  pujaId: ID!
+  userName: String!
+  email: String
+  title: String!
+  rating: Int!
+  comment: String!
+  image: String
+}
 
   type PujaMantraOption {
     id: ID!
@@ -1481,17 +1491,20 @@ type LeaveLiveResponse {
     updatedAt: String!
   }
 
-  type PujaReview {
-    id: ID!
-    pujaId: ID!
-    userId: ID
-    userName: String!
-    rating: Int!
-    comment: String!
-    status: PujaReviewStatus!
-    createdAt: String!
-    updatedAt: String!
-  }
+ type PujaReview {
+  id: ID!
+  pujaId: ID!
+  userId: ID
+  userName: String!
+  email: String
+  title: String
+  rating: Int!
+  comment: String!
+  image: String
+  status: PujaReviewStatus!
+  createdAt: String!
+  updatedAt: String!
+}
 
   input PujaFAQInput {
     question: String!
@@ -1712,7 +1725,7 @@ type LeaveLiveResponse {
 
   leaveLive(channelName: String!): LeaveLiveResponse!
   
- 
+  createPujaReview(input: CreatePujaReviewInput!): PujaReview!
 
   }
 `;

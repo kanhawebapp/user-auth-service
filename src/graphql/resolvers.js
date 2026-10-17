@@ -6418,5 +6418,51 @@ pujaService: async (_, { id, slug }) => {
         throw new Error(error.message || "Failed to delete account");
       }
     },
+
+        createPujaReview: async (_, { input }) => {
+      const { pujaId, userName, email, title, rating, comment, image } = input;
+
+      if (!pujaId) {
+        throw new GraphQLError("Puja ID is required.");
+      }
+
+      if (!userName?.trim()) {
+        throw new GraphQLError("Display name is required.");
+      }
+
+      if (!title?.trim()) {
+        throw new GraphQLError("Review title is required.");
+      }
+
+      if (!comment?.trim()) {
+        throw new GraphQLError("Review content is required.");
+      }
+
+      if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+        throw new GraphQLError("Rating must be between 1 and 5.");
+      }
+
+      const puja = await prisma.pujaService.findUnique({
+        where: { id: pujaId },
+        select: { id: true },
+      });
+
+      if (!puja) {
+        throw new GraphQLError("Puja service not found.");
+      }
+
+      return prisma.pujaReview.create({
+        data: {
+          pujaId,
+          userName: userName.trim(),
+          email: email?.trim() || null,
+          title: title.trim(),
+          rating,
+          comment: comment.trim(),
+          image: image?.trim() || null,
+          status: "PENDING",
+        },
+      });
+    },
   },
 };
