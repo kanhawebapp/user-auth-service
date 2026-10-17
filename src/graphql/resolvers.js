@@ -3096,6 +3096,59 @@ pujaService: async (_, { id, slug }) => {
         );
       }
     },
+<<<<<<< Updated upstream
+=======
+  },
+  select: {
+    totalViews: true,
+  },
+});
+
+// 11. Return data required by the viewer frontend.
+
+currentStep = "prepare joinLive response";
+
+return {
+  id: stream.id,
+
+  // Astrologer details for Follow / Unfollow
+  astrologerId: stream.astrologerId,
+
+  // Stream information
+  channelName: stream.channelName,
+
+  // Total views
+  totalViews: updatedStream.totalViews,
+
+  // Agora RTC
+  appId,
+  uid,
+  rtcToken,
+
+  // Agora Chat
+  chatUserId,
+  chatToken,
+  chatRoomId: stream.chatRoomId,
+  chatAppKey,
+};
+  } catch (error) {
+    // Never log tokens, passwords, or certificates.
+    console.error("joinLive failed", {
+      step: currentStep,
+      channelName,
+      userId: user?.id,
+      httpStatus: error.response?.status,
+      agoraError: error.response?.data?.error,
+      agoraErrorDescription: error.response?.data?.error_description,
+      message: error.message,
+    });
+
+    throw new Error(
+      `Failed to join live during "${currentStep}": ${error.message}`
+    );
+  }
+    },
+>>>>>>> Stashed changes
 
     getLiveGifts: async (_, __, { user }) => {
       try {
