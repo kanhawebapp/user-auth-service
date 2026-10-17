@@ -44,9 +44,8 @@ module.exports = {
   JSON: GraphQLJSON,
   Upload: GraphQLUpload,
   Query: {
-pujaServices: async (_, __, context) => {
-  const prisma = context.prisma;
-
+// Get all Puja Services
+pujaServices: async () => {
   return prisma.pujaService.findMany({
     include: pujaInclude,
     orderBy: {
@@ -55,23 +54,21 @@ pujaServices: async (_, __, context) => {
   });
 },
 
-    // Find by ID or slug
-    pujaService: async (_, { id, slug }, context) => {
-      const prisma = context.prisma;
+// Get single Puja Service by ID or slug
+pujaService: async (_, { id, slug }) => {
+  if (!id && !slug) {
+    throw new GraphQLError("Provide either a Puja ID or slug.");
+  }
 
-      if (!id && !slug) {
-        throw new GraphQLError("Provide either a Puja ID or slug.");
-      }
+  if (id && slug) {
+    throw new GraphQLError("Provide either ID or slug, not both.");
+  }
 
-      if (id && slug) {
-        throw new GraphQLError("Provide either ID or slug, not both.");
-      }
-
-      return prisma.pujaService.findUnique({
-        where: id ? { id } : { slug },
-        include: pujaInclude,
-      });
-    },
+  return prisma.pujaService.findUnique({
+    where: id ? { id } : { slug },
+    include: pujaInclude,
+  });
+},
     getUsersDetails: async (
       _,
       { page = 1, limit = 10, search = "" },
