@@ -1951,17 +1951,16 @@ model PujaFAQ {
 
 model PujaReview {
   id        String           @id @default(uuid())
-
   pujaId    String
   puja      PujaService      @relation(fields: [pujaId], references: [id], onDelete: Cascade)
-
   userId    String?
   userName  String
-
+  email     String?
+  title     String?
   rating    Int
   comment   String           @db.Text
+  image     String?
   status    PujaReviewStatus @default(PENDING)
-
   createdAt DateTime         @default(now())
   updatedAt DateTime         @updatedAt
 
