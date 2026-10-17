@@ -1466,6 +1466,7 @@ type LeaveLiveResponse {
   }
   
   input CreatePujaReviewInput {
+    userId: ID!
   pujaId: ID!
   userName: String!
   email: String

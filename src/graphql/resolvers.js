@@ -6437,116 +6437,72 @@ pujaService: async (_, { id, slug }) => {
       }
     },
 
-    createPujaReview: async (_, { input }) => {
-      const { pujaId, userName, email, title, rating, comment, image } = input;
-
-      if (!pujaId) {
-        throw new GraphQLError("Puja ID is required.");
-      }
-
-      if (!userName?.trim()) {
-        throw new GraphQLError("Display name is required.");
-      }
-
-      if (!title?.trim()) {
-        throw new GraphQLError("Review title is required.");
-      }
-
-      if (!comment?.trim()) {
-        throw new GraphQLError("Review content is required.");
-      }
-
-      if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
-        throw new GraphQLError("Rating must be between 1 and 5.");
-      }
-
-      const puja = await prisma.pujaService.findUnique({
-        where: { id: pujaId },
-        select: { id: true },
-      });
-
-      if (!puja) {
-        throw new GraphQLError("Puja service not found.");
-      }
-
-      return prisma.pujaReview.create({
-        data: {
-          pujaId,
-          userName: userName.trim(),
-          email: email?.trim() || null,
-          title: title.trim(),
-          rating,
-          comment: comment.trim(),
-          image: image?.trim() || null,
-          status: "PENDING",
-        },
-      });
-    },
-
-    createPujaBooking: async (_, { input }, { user }) => {
-  if (!user?.id) {
-    throw new GraphQLError("Please login to book a puja.");
-  }
-
-  const { pujaId, quantity, mantraOptionId } = input;
+  createPujaReview: async (_, { input }) => {
+  const {
+    pujaId,
+    userId,
+    userName,
+    email,
+    title,
+    rating,
+    comment,
+    image,
+  } = input;
 
   if (!pujaId) {
     throw new GraphQLError("Puja ID is required.");
   }
 
-  if (!Number.isInteger(quantity) || quantity < 1 || quantity > 20) {
-    throw new GraphQLError("Quantity must be between 1 and 20.");
+  if (!userId) {
+    throw new GraphQLError("User ID is required.");
   }
 
-  const puja = await prisma.pujaService.findUnique({
-    where: { id: pujaId },
-    include: {
-      mantraOptions: true,
-    },
-  });
+  if (!userName?.trim()) {
+    throw new GraphQLError("Display name is required.");
+  }
+
+  if (!title?.trim()) {
+    throw new GraphQLError("Review title is required.");
+  }
+
+  if (!comment?.trim()) {
+    throw new GraphQLError("Review content is required.");
+  }
+
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+    throw new GraphQLError("Rating must be between 1 and 5.");
+  }
+
+  const [puja, user] = await Promise.all([
+    prisma.pujaService.findUnique({
+      where: { id: pujaId },
+      select: { id: true },
+    }),
+    prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true },
+    }),
+  ]);
 
   if (!puja) {
     throw new GraphQLError("Puja service not found.");
   }
 
-  const unitPrice = Number(puja.price);
-
-  if (!Number.isFinite(unitPrice) || unitPrice < 0) {
-    throw new GraphQLError("Invalid puja price.");
+  if (!user) {
+    throw new GraphQLError("User not found.");
   }
 
-  let selectedMantra = null;
-
-  if (mantraOptionId) {
-    selectedMantra = puja.mantraOptions.find(
-      (option) => option.id === mantraOptionId,
-    );
-
-    if (!selectedMantra) {
-      throw new GraphQLError(
-        "Selected mantra is not available for this puja.",
-      );
-    }
-  } else {
-    selectedMantra = puja.mantraOptions[0] ?? null;
-  }
-
-  const totalAmount = unitPrice * quantity;
-
-  return prisma.pujaBooking.create({
+  return prisma.pujaReview.create({
     data: {
-      userId: user.id,
-      pujaId: puja.id,
-
-      mantraOptionId: selectedMantra?.id ?? null,
-      mantraOptionName: selectedMantra?.name ?? null,
-
-      quantity,
-      unitPrice,
-      totalAmount,
-
-      paymentStatus: "PENDING",
-      bookingStatus: "PENDING",
+      pujaId,
+      userId,
+      userName: userName.trim(),
+      email: email?.trim() || null,
+      title: title.trim(),
+      rating,
+      comment: comment.trim(),
+      image: image?.trim() || null,
+      status: "PENDING",
     },
   });
 },
