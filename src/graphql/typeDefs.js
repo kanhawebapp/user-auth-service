@@ -1458,7 +1458,81 @@ type LeaveLiveResponse {
   channelName: String!
 }
   
+  #Puja servicess
+  enum PujaReviewStatus {
+    PENDING
+    APPROVED
+    REJECTED
+  }
+
+  type PujaMantraOption {
+    id: ID!
+    name: String!
+    pujaId: ID!
+    createdAt: String!
+  }
+
+  type PujaFAQ {
+    id: ID!
+    question: String!
+    answer: String!
+    pujaId: ID!
+    createdAt: String!
+    updatedAt: String!
+  }
+
+  type PujaReview {
+    id: ID!
+    pujaId: ID!
+    userId: ID
+    userName: String!
+    rating: Int!
+    comment: String!
+    status: PujaReviewStatus!
+    createdAt: String!
+    updatedAt: String!
+  }
+
+  input PujaFAQInput {
+    question: String!
+    answer: String!
+  }
+
+  type PujaService {
+    id: ID!
+    title: String!
+    slug: String!
+    image: String!
+    category: String
+
+    shortDescription: String
+    description: String
+    benefits: String
+    howToPerform: String
+    packaging: String
+
+    price: Float!
+    mrp: Float
+    discount: Float
+
+    customersCount: Int!
+    rating: Float!
+
+    mantraOptions: [PujaMantraOption!]!
+    faqs: [PujaFAQ!]!
+    reviews: [PujaReview!]!
+
+    createdAt: String!
+    updatedAt: String!
+  }
+  
   type Query {
+      # puja services
+    pujaServices: [PujaService!]!
+
+    pujaService(id: ID, slug: String): PujaService
+
+    pujaReviews(pujaId: ID!): [PujaReview!]!
    getPaymentInvoice(transactionId: ID!): PaymentInvoice
     getAstrologerCategories: [AstrologerCategory!]!
     getActiveSkills: [Skill!]!
