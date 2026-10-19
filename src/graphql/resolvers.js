@@ -3380,6 +3380,25 @@ module.exports = {
 
   return booking;
 },
+
+getPujaPaymentOrder: async (_, { bookingId }, { user }) => {
+      if (!user?.id) {
+        throw new GraphQLError("Unauthorized");
+      }
+      const paymentOrder = await prisma.pujaPaymentOrder.findFirst({
+        where: {
+          bookingId,
+          userId: user.id,
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+      });
+      if (!paymentOrder) {
+        throw new GraphQLError("Puja payment order not found");
+      }
+      return paymentOrder;
+    },
   },
   //----------------start code for mutation ----------------------------
   Mutation: {
@@ -6570,5 +6589,187 @@ module.exports = {
         },
       });
     },
+
+    createPujaOrder: async (_, { input }, context) => {
+  try {
+    if (!context.user?.id) {
+      throw new Error("Unauthorized");
+    }
+
+    const userId = context.user.id;
+    const { bookingId, couponCode } = input;
+
+    // 1. Fetch booking and related puja
+    const booking = await prisma.pujaBooking.findFirst({
+      where: {
+        id: bookingId,
+        userId,
+      },
+      include: {
+        puja: {
+          select: {
+            id: true,
+            title: true,
+          },
+        },
+      },
+    });
+
+    if (!booking) {
+      throw new Error("Puja booking not found");
+    }
+
+    if (booking.paymentStatus === "SUCCESS" ||
+        booking.paymentStatus === "PAID") {
+      throw new Error("Puja booking is already paid");
+    }
+
+    // 2. Use the server-side booking amount
+    const totalAmount = Number(booking.totalAmount);
+
+    if (!Number.isFinite(totalAmount) || totalAmount <= 0) {
+      throw new Error("Invalid puja amount");
+    }
+
+    let coupon = null;
+    let discount = 0;
+    let cashback = 0;
+
+    let payableAmount = totalAmount + (totalAmount * 18) / 100;
+
+    // 3. Apply coupon
+    if (couponCode?.trim()) {
+      coupon = await prisma.coupon.findUnique({
+        where: {
+          code: couponCode.trim(),
+        },
+      });
+
+      if (!coupon) {
+        throw new Error("Invalid coupon");
+      }
+
+      const now = new Date();
+
+      if (!coupon.status) {
+        throw new Error("Coupon inactive");
+      }
+
+      if (coupon.startDate > now) {
+        throw new Error("Coupon not started");
+      }
+
+      if (coupon.endDate < now) {
+        throw new Error("Coupon expired");
+      }
+
+      if (
+        coupon.redeemLimit &&
+        coupon.usedCount >= coupon.redeemLimit
+      ) {
+        throw new Error("Coupon exhausted");
+      }
+
+      if (
+        coupon.minOrderAmount &&
+        totalAmount < coupon.minOrderAmount
+      ) {
+        throw new Error(
+          `Minimum amount should be ₹${coupon.minOrderAmount}`
+        );
+      }
+
+      if (coupon.type === "DISCOUNT") {
+        discount =
+          (totalAmount * (coupon.percentage || 0)) / 100;
+
+        if (
+          coupon.maxDiscount &&
+          discount > coupon.maxDiscount
+        ) {
+          discount = coupon.maxDiscount;
+        }
+
+        discount = Math.min(discount, totalAmount);
+
+        const amountAfterDiscount = totalAmount - discount;
+
+        payableAmount =
+          amountAfterDiscount +
+          (amountAfterDiscount * 18) / 100;
+      }
+
+      if (coupon.type === "CASHBACK") {
+        cashback =
+          (totalAmount * (coupon.percentage || 0)) / 100;
+
+        if (
+          coupon.maxDiscount &&
+          cashback > coupon.maxDiscount
+        ) {
+          cashback = coupon.maxDiscount;
+        }
+      }
+    }
+
+    payableAmount = Number(payableAmount.toFixed(2));
+
+    if (!Number.isFinite(payableAmount) || payableAmount <= 0) {
+      throw new Error("Invalid payable amount");
+    }
+
+    // 4. Create Razorpay order
+    const receiptId = uuidv4();
+
+    const order = await razorpay.orders.create({
+      amount: Math.round(payableAmount * 100),
+      currency: "INR",
+      receipt: receiptId,
+      notes: {
+        bookingId: booking.id,
+        pujaId: booking.pujaId,
+        pujaTitle: booking.puja.title,
+        userId,
+        serviceType: "PUJA",
+        couponCode: coupon?.code || "",
+        couponType: coupon?.type || "",
+        discount: discount.toString(),
+        cashback: cashback.toString(),
+      },
+    });
+
+ await prisma.pujaPaymentOrder.create({
+  data: {
+    userId,
+    bookingId: booking.id,
+    razorpayOrderId: order.id,
+    totalAmount,
+    walletAmount: 0,
+    payableAmount,
+    couponId: coupon?.id ?? null,
+    discount,
+    cashback,
+    status: "CREATED",
+  },
+});
+
+    return {
+      success: true,
+      message: "Puja payment order created",
+      orderId: order.id,
+      currency: "INR",
+      bookingId: booking.id,
+      pujaTitle: booking.puja.title,
+      totalAmount,
+      amount: Math.round(payableAmount * 100),
+    };
+  } catch (error) {
+    console.error("createPujaOrder error:", error);
+
+    throw new Error(
+      error.message || "Failed to create puja order"
+    );
+  }
+},
   },
 };
