@@ -180,6 +180,7 @@ model User {
   callRecordings CallRecording[]
   couponRedemptions CouponRedemption[]
   pujaBookings PujaBooking[]
+  pujaPaymentOrders PujaPaymentOrder[]
 
   @@unique([countryCode, mobile])
 }
@@ -944,6 +945,7 @@ model Coupon {
   // ADD THESE
   paymentOrders     PaymentOrder[]
   couponRedemptions CouponRedemption[]
+  pujaPaymentOrders PujaPaymentOrder[] @relation("CouponPujaPaymentOrders")
   servicePaymentOrders ServicePaymentOrder[] @relation("CouponServicePaymentOrders")
 }
 
@@ -1999,9 +2001,42 @@ model PujaBooking {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  paymentOrders PujaPaymentOrder[]
 
   @@index([userId])
   @@index([pujaId])
   @@index([paymentStatus])
   @@index([bookingStatus])
+}
+
+model PujaPaymentOrder {
+  id String @id @default(uuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  bookingId String
+  booking   PujaBooking @relation(fields: [bookingId], references: [id])
+
+  razorpayOrderId String? @unique
+
+  totalAmount   Float
+  walletAmount  Float @default(0)
+  payableAmount Float
+
+  couponId String?
+  coupon   Coupon? @relation("CouponPujaPaymentOrders", fields: [couponId], references: [id])
+
+  discount Float @default(0)
+  cashback Float @default(0)
+
+  status PaymentOrderStatus @default(CREATED)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([bookingId])
+  @@index([status])
+  @@index([couponId])
 }

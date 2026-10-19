@@ -1559,6 +1559,38 @@ type LeaveLiveResponse {
   quantity: Int!
   mantraOptionId: String
 }
+
+ type CreatePujaOrderResponse {
+  success: Boolean!
+  message: String
+  orderId: String
+  currency: String
+  bookingId: ID
+  pujaName: String
+  totalAmount: Float
+  amount: Float
+}
+
+input CreatePujaOrderInput {
+  bookingId: ID!
+  couponCode: String
+}
+
+type PujaPaymentOrder {
+  id: ID!
+  userId: ID!
+  bookingId: ID!
+  razorpayOrderId: String
+  totalAmount: Float!
+  walletAmount: Float!
+  payableAmount: Float!
+  couponId: String
+  discount: Float!
+  cashback: Float!
+  status: String!
+  createdAt: String!
+  updatedAt: String!
+}
   
   type Query {
       # puja services
@@ -1669,6 +1701,7 @@ type LeaveLiveResponse {
 
      getLiveGifts: [LiveGift!]!
      getPujaBooking(bookingId: ID!): PujaBooking
+     getPujaPaymentOrder(bookingId: ID!): PujaPaymentOrder
   }
 
   type Mutation {
@@ -1750,6 +1783,10 @@ type LeaveLiveResponse {
   createPujaReview(input: CreatePujaReviewInput!): PujaReview!
 
    createPujaBooking(input: CreatePujaBookingInput!): PujaBooking!
+   
+   createPujaOrder(
+    input: CreatePujaOrderInput!
+  ): CreatePujaOrderResponse!
 
   }
 `;
