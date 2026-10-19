@@ -1562,13 +1562,13 @@ type LeaveLiveResponse {
 
  type CreatePujaOrderResponse {
   success: Boolean!
-  message: String
+  message: String!
   orderId: String
-  currency: String
-  bookingId: ID
-  pujaName: String
-  totalAmount: Float
   amount: Float
+  currency: String
+  bookingId: String
+  pujaTitle: String
+  totalAmount: Float
 }
 
 input CreatePujaOrderInput {
@@ -1783,7 +1783,7 @@ type PujaPaymentOrder {
   createPujaReview(input: CreatePujaReviewInput!): PujaReview!
 
    createPujaBooking(input: CreatePujaBookingInput!): PujaBooking!
-   
+
    createPujaOrder(
     input: CreatePujaOrderInput!
   ): CreatePujaOrderResponse!
