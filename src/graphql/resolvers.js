@@ -6863,6 +6863,318 @@ getPujaPaymentOrder: async (_, { bookingId }, { user }) => {
       error.message || "Failed to create puja payment order"
     );
   }
+   },
+
+   verifyPujaCoupon: async (_, { input }, context) => {
+  try {
+    // =====================================================
+    // 1. AUTHENTICATION
+    // =====================================================
+    if (!context.user) {
+      throw new Error("Unauthorized: Please login to apply coupon");
+    }
+
+    const userId = context.user.id;
+    const { bookingId, couponCode } = input;
+
+    // =====================================================
+    // 2. VALIDATE INPUT
+    // =====================================================
+    if (!bookingId) {
+      throw new Error("Booking ID is required");
+    }
+
+    if (!couponCode || !couponCode.trim()) {
+      throw new Error("Coupon code is required");
+    }
+
+    // =====================================================
+    // 3. FETCH PUJA BOOKING
+    // =====================================================
+    const booking = await prisma.pujaBooking.findUnique({
+      where: {
+        id: bookingId,
+      },
+      include: {
+        puja: true,
+        user: false,
+      },
+    });
+
+    if (!booking) {
+      throw new Error("Puja booking not found");
+    }
+
+    // =====================================================
+    // 4. VERIFY BOOKING OWNER
+    // =====================================================
+    if (booking.userId !== userId) {
+      throw new Error(
+        "You are not authorized to apply a coupon to this Puja booking"
+      );
+    }
+
+    // =====================================================
+    // 5. CHECK BOOKING PAYMENT STATUS
+    // =====================================================
+    if (
+      booking.paymentStatus === "PAID" ||
+      booking.bookingStatus === "COMPLETED"
+    ) {
+      throw new Error("Cannot apply a coupon to an already paid booking");
+    }
+
+    // =====================================================
+    // 6. ORIGINAL PUJA AMOUNT
+    // =====================================================
+    const originalAmount = Number(booking.totalAmount || 0);
+
+    if (!Number.isFinite(originalAmount) || originalAmount <= 0) {
+      throw new Error("Invalid Puja booking amount");
+    }
+
+    // =====================================================
+    // 7. FIND COUPON
+    // =====================================================
+    const normalizedCode = couponCode.trim().toUpperCase();
+
+    const coupon = await prisma.coupon.findUnique({
+      where: {
+        code: normalizedCode,
+      },
+    });
+
+    if (!coupon) {
+      throw new Error("Invalid coupon code");
+    }
+
+    // =====================================================
+    // 8. CHECK COUPON STATUS
+    // =====================================================
+    if (!coupon.status) {
+      throw new Error("Coupon is currently inactive");
+    }
+
+    // =====================================================
+    // 9. CHECK VISIBILITY
+    // =====================================================
+    if (coupon.visibility !== "VISIBLE") {
+      throw new Error("Coupon is currently not available");
+    }
+
+    // =====================================================
+    // 10. CHECK COUPON VALIDITY DATES
+    // =====================================================
+    const now = new Date();
+
+    if (coupon.startDate && new Date(coupon.startDate) > now) {
+      throw new Error(
+        `Coupon is not active yet. Valid from ${new Date(
+          coupon.startDate
+        ).toLocaleDateString()}`
+      );
+    }
+
+    if (coupon.endDate && new Date(coupon.endDate) < now) {
+      throw new Error(
+        `Coupon expired on ${new Date(
+          coupon.endDate
+        ).toLocaleDateString()}`
+      );
+    }
+
+    // =====================================================
+    // 11. CHECK PUJA APPLICABILITY
+    // =====================================================
+    const applicable = coupon.applicable
+      ?.trim()
+      .toLowerCase();
+
+    const allowedApplicability = [
+      "puja",
+      "service",
+      "services",
+      "both",
+    ];
+
+    if (
+      applicable &&
+      !allowedApplicability.includes(applicable)
+    ) {
+      throw new Error("This coupon is not applicable to Puja services");
+    }
+
+    // =====================================================
+    // 12. CHECK GLOBAL REDEMPTION LIMIT
+    // =====================================================
+    if (
+      coupon.redeemLimit !== null &&
+      coupon.redeemLimit !== undefined &&
+      Number(coupon.usedCount || 0) >= Number(coupon.redeemLimit)
+    ) {
+      throw new Error("Coupon redemption limit has been reached");
+    }
+
+    // =====================================================
+    // 13. CHECK MINIMUM ORDER AMOUNT
+    // =====================================================
+    if (
+      coupon.minOrderAmount !== null &&
+      coupon.minOrderAmount !== undefined &&
+      originalAmount < Number(coupon.minOrderAmount)
+    ) {
+      throw new Error(
+        `Minimum order amount of ₹${coupon.minOrderAmount} is required for this coupon`
+      );
+    }
+
+    // =====================================================
+    // 14. CHECK USER REDEMPTION
+    // =====================================================
+    const alreadyRedeemed =
+      await prisma.couponRedemption.findFirst({
+        where: {
+          couponId: coupon.id,
+          userId,
+        },
+      });
+
+    if (alreadyRedeemed) {
+      throw new Error("You have already used this coupon");
+    }
+
+    // =====================================================
+    // 15. CALCULATE DISCOUNT AND CASHBACK
+    // =====================================================
+    let discount = 0;
+    let cashback = 0;
+
+    if (coupon.type === "DISCOUNT") {
+      // Percentage discount
+      if (
+        coupon.percentage !== null &&
+        coupon.percentage !== undefined
+      ) {
+        discount =
+          (originalAmount * Number(coupon.percentage)) / 100;
+      }
+
+      // Flat discount takes precedence when configured,
+      // matching your existing service resolver.
+      if (
+        coupon.flatAmount !== null &&
+        coupon.flatAmount !== undefined
+      ) {
+        discount = Number(coupon.flatAmount);
+      }
+
+      // Apply maximum discount
+      if (
+        coupon.maxDiscount !== null &&
+        coupon.maxDiscount !== undefined
+      ) {
+        discount = Math.min(
+          discount,
+          Number(coupon.maxDiscount)
+        );
+      }
+
+      // Discount cannot exceed original Puja amount
+      discount = Math.min(discount, originalAmount);
+    } else if (coupon.type === "CASHBACK") {
+      cashback =
+        (originalAmount * Number(coupon.percentage || 0)) / 100;
+
+      // Apply maximum cashback
+      if (
+        coupon.maxDiscount !== null &&
+        coupon.maxDiscount !== undefined
+      ) {
+        cashback = Math.min(
+          cashback,
+          Number(coupon.maxDiscount)
+        );
+      }
+    } else {
+      throw new Error("Unsupported coupon type");
+    }
+
+    // =====================================================
+    // 16. CALCULATE PRICE AFTER DISCOUNT
+    // =====================================================
+    const discountedPrice = Math.max(
+      0,
+      originalAmount - discount
+    );
+
+    // =====================================================
+    // 17. CALCULATE GST
+    // =====================================================
+    // GST is calculated after discount.
+    const gstAmount = (discountedPrice * 18) / 100;
+
+    // =====================================================
+    // 18. FINAL PAYABLE AMOUNT
+    // =====================================================
+    const payableAmount = discountedPrice + gstAmount;
+
+    // =====================================================
+    // 19. RESPONSE
+    // =====================================================
+    const roundMoney = (value) =>
+      Math.round((value + Number.EPSILON) * 100) / 100;
+
+    return {
+      success: true,
+      message: "Puja coupon verified successfully",
+
+      coupon: {
+        ...coupon,
+
+        percentage:
+          coupon.percentage !== null
+            ? Number(coupon.percentage)
+            : null,
+
+        flatAmount:
+          coupon.flatAmount !== null
+            ? Number(coupon.flatAmount)
+            : null,
+
+        maxDiscount:
+          coupon.maxDiscount !== null
+            ? Number(coupon.maxDiscount)
+            : null,
+
+        minOrderAmount:
+          coupon.minOrderAmount !== null
+            ? Number(coupon.minOrderAmount)
+            : null,
+      },
+
+      originalAmount: roundMoney(originalAmount),
+      discount: roundMoney(discount),
+      discountedPrice: roundMoney(discountedPrice),
+      gstAmount: roundMoney(gstAmount),
+      cashback: roundMoney(cashback),
+      payableAmount: roundMoney(payableAmount),
+    };
+  } catch (error) {
+    console.error("Puja coupon verification error:", error);
+
+    return {
+      success: false,
+      message: error.message || "Failed to verify Puja coupon",
+      coupon: null,
+      originalAmount: 0,
+      discount: 0,
+      discountedPrice: 0,
+      gstAmount: 0,
+      cashback: 0,
+      payableAmount: 0,
+    };
+  }
 },
+
   },
 };

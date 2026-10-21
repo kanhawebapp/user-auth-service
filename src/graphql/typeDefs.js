@@ -1788,5 +1788,9 @@ type PujaPaymentOrder {
     input: CreatePujaOrderInput!
   ): CreatePujaOrderResponse!
 
+  verifyPujaCoupon(
+  input: VerifyServiceCouponInput!
+): VerifyServiceCouponResponse!
+
   }
 `;
