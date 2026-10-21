@@ -1709,7 +1709,8 @@ model CouponRedemption {
   // Service booking payment
   servicePaymentOrderId String? @unique
   servicePaymentOrder ServicePaymentOrder? @relation(fields: [servicePaymentOrderId], references: [id])
-
+   pujaPaymentOrderId String?           @unique
+  pujaPaymentOrder     PujaPaymentOrder?    @relation(fields: [pujaPaymentOrderId], references: [id])
   discount Float
 
   createdAt DateTime @default(now())
@@ -2031,6 +2032,7 @@ model PujaPaymentOrder {
   cashback Float @default(0)
 
   status PaymentOrderStatus @default(CREATED)
+  couponRedemptions CouponRedemption[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
