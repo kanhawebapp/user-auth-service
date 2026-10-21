@@ -920,83 +920,75 @@ module.exports = {
     },
 
     getRechargePacks: async (_, __, context) => {
-      const { user } = context;
+  const { user } = context;
 
-      let where = {
-        isActive: true,
-      };
+  let where = {
+    isActive: true,
+  };
 
-      let isFirstRecharge = true;
+  let isFirstRecharge = true;
 
-      if (user?.id) {
-        // 1. Check whether the user has any successful recharge
-        const previousRecharge = await prisma.payment.findFirst({
-          where: {
-            userId: user.id,
-            status: "SUCCESS",
-            rechargePackId: {
-              not: null,
+  if (user?.id) {
+    // 1. Get successful payments made by this user
+    const userPayments = await prisma.payment.findMany({
+      where: {
+        userId: user.id,
+        status: "SUCCESS",
+      },
+      select: {
+        id: true,
+        rechargePackId: true,
+      },
+    });
+
+    // 2. Keep only payments associated with recharge packs
+    const rechargePayments = userPayments.filter(
+      (payment) => payment.rechargePackId,
+    );
+
+    // 3. Determine whether this is the user's first successful recharge
+    isFirstRecharge = rechargePayments.length === 0;
+
+    // 4. Find recharge packs previously purchased successfully
+    const purchasedPackIds = [
+      ...new Set(
+        rechargePayments.map((payment) => payment.rechargePackId),
+      ),
+    ];
+
+    // 5. Preserve existing pack visibility behavior
+    where = {
+      isActive: true,
+      NOT: {
+        AND: [
+          {
+            hideAfterFirstRecharge: true,
+          },
+          {
+            id: {
+              in: purchasedPackIds,
             },
           },
-          select: {
-            id: true,
-          },
-        });
+        ],
+      },
+    };
+  }
 
-        // First recharge if no previous successful recharge exists
-        isFirstRecharge = !previousRecharge;
-
-        // 2. Get the user's previously purchased recharge packs
-        const userPayments = await prisma.payment.findMany({
-          where: {
-            userId: user.id,
-            status: "SUCCESS",
-            rechargePackId: {
-              not: null,
-            },
-          },
-          select: {
-            rechargePackId: true,
-          },
-        });
-
-        const purchasedPackIds = userPayments
-          .map((payment) => payment.rechargePackId)
-          .filter(Boolean);
-
-        // 3. Preserve the existing hideAfterFirstRecharge behavior
-        where = {
-          isActive: true,
-          NOT: {
-            AND: [
-              {
-                hideAfterFirstRecharge: true,
-              },
-              {
-                id: {
-                  in: purchasedPackIds,
-                },
-              },
-            ],
-          },
-        };
-      }
-
-      // 4. Fetch active recharge packs
-      const packs = await prisma.rechargePack.findMany({
-        where,
-        orderBy: {
-          price: "asc",
-        },
-      });
-
-      // 5. Return recharge status and packs
-      return {
-        isFirstRecharge,
-        data: packs,
-        totalCount: packs.length,
-      };
+  // 6. Fetch available recharge packs
+  const packs = await prisma.rechargePack.findMany({
+    where,
+    orderBy: {
+      price: "asc",
     },
+  });
+
+  // 7. Return response
+  return {
+    isFirstRecharge,
+    data: packs,
+    totalCount: packs.length,
+  };
+},
     getActiveSkills: async () => {
       return prisma.skill.findMany({
         where: {
