@@ -1478,12 +1478,7 @@ type LeaveLiveResponse {
   image: String
 }
 
-  type PujaMantraOption {
-    id: ID!
-    name: String!
-    pujaId: ID!
-    createdAt: String!
-  }
+
 
   type PujaFAQ {
     id: ID!
@@ -1514,33 +1509,45 @@ type LeaveLiveResponse {
     answer: String!
   }
 
-  type PujaService {
-    id: ID!
-    title: String!
-    slug: String!
-    image: String!
-    category: String
 
-    shortDescription: String
-    description: String
-    benefits: String
-    howToPerform: String
-    packaging: String
+type PujaMantraOption {
+  id: ID!
+  name: String!
+  originalPrice: Float!
+  offerPrice: Float!
+  sortOrder: Int!
+  pujaId: ID!
+  createdAt: String!
+}
 
-    price: Float!
-    mrp: Float
-    discount: Float
+type PujaService {
+  id: ID!
+  title: String!
+  slug: String!
+  image: String!
+  category: String
 
-    customersCount: Int!
-    rating: Float!
+  shortDescription: String
+  description: String
+  benefits: String
+  howToPerform: String
+  packaging: String
 
-    mantraOptions: [PujaMantraOption!]!
-    faqs: [PujaFAQ!]!
-    reviews: [PujaReview!]!
+  price: Float!
+  mrp: Float
+  discount: Float
 
-    createdAt: String!
-    updatedAt: String!
-  }
+  customersCount: Int!
+  rating: Float!
+
+  mantraOptions: [PujaMantraOption!]!
+  faqs: [PujaFAQ!]!
+  reviews: [PujaReview!]!
+
+  createdAt: String!
+  updatedAt: String!
+}
+
   type PujaBooking {
   id: ID!
   userId: ID!
