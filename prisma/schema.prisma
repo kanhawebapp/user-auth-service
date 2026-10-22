@@ -1890,14 +1890,15 @@ sessionDate DateTime
 //-----------------puja tables-------------------
 //-----------------puja tables-------------------
 
+
 model PujaService {
-  id              String   @id @default(uuid())
+  id               String   @id @default(uuid())
 
   // Basic Information
-  title           String
-  slug            String   @unique
-  image           String
-  category        String?
+  title            String
+  slug             String   @unique
+  image            String
+  category         String?
 
   // Description
   shortDescription String?
@@ -1906,7 +1907,7 @@ model PujaService {
   howToPerform     String?  @db.Text
   packaging        String?  @db.Text
 
-  // Pricing
+  // Pricing (derived from the first sorted mantra option)
   price            Float
   mrp              Float?
   discount         Float?
@@ -1919,26 +1920,34 @@ model PujaService {
   mantraOptions    PujaMantraOption[]
   faqs             PujaFAQ[]
   reviews          PujaReview[]
+  bookings         PujaBooking[]
 
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
-  bookings PujaBooking[]
 
   @@index([category])
   @@index([createdAt])
 }
 
 model PujaMantraOption {
-  id        String      @id @default(uuid())
-  name      String
+  id            String      @id @default(uuid())
+  name          String
 
-  pujaId    String
-  puja      PujaService @relation(fields: [pujaId], references: [id], onDelete: Cascade)
+  // Individual mantra pricing
+  originalPrice Float
+  offerPrice    Float
+  sortOrder     Int         @default(0)
 
-  createdAt DateTime    @default(now())
+  // Relation
+  pujaId        String
+  puja          PujaService @relation(fields: [pujaId], references: [id], onDelete: Cascade)
+
+  createdAt     DateTime    @default(now())
 
   @@index([pujaId])
+  @@index([pujaId, sortOrder])
 }
+
 
 model PujaFAQ {
   id        String      @id @default(uuid())
