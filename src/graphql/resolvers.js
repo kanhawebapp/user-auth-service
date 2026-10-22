@@ -5293,7 +5293,7 @@ module.exports = {
         const previousSuccessfulRecharge = await prisma.paymentOrder.findFirst({
           where: {
             userId,
-            status: "SUCCESS",
+            status: "PAID",
           },
           select: {
             id: true,
