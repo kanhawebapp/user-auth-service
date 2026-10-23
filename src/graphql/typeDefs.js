@@ -190,6 +190,16 @@ type ProfileImageUploadResponse {
   isFirstTimeOffer: Boolean!
   isFirstTimeOfferUsed: Boolean!
 }
+  type RechargePackById {
+  id: ID!
+  name: String!
+  description: String
+  price: Float!
+  coins: Int!
+  talktime: Int!
+  hideAfterFirstRecharge: Boolean!
+  
+}
 type RechargePackResponse {
   data: [RechargePack!]!
   totalCount: Int!
@@ -1622,7 +1632,7 @@ type PujaPaymentOrder {
       searchInput: AstrologerSearchInput
     ): AstrologerPagination!
     getRechargePacks: RechargePackResponse!
-    getRechargePackById(id: ID!): RechargePack
+    getRechargePackById(id: ID!): RechargePackById
     me: User
     getUserById(id: String!): UserBasicInfo
     getAstrologerById(id: String!): Astrologer
