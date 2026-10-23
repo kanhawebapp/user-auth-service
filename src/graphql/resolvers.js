@@ -929,21 +929,19 @@ module.exports = {
   let purchasedPackIds = [];
 
   if (user?.id) {
-    // 1. Get the user's successful recharge payments
+    // 1. Get all successful payments made by the user
     const rechargePayments = await prisma.payment.findMany({
       where: {
         userId: user.id,
         status: "SUCCESS",
-        rechargePackId: {
-          not: null,
-        },
       },
       select: {
         rechargePackId: true,
       },
     });
 
-    // 2. Get unique purchased recharge pack IDs
+    // 2. Extract unique purchased recharge pack IDs
+    // Ignore null or undefined rechargePackId values
     purchasedPackIds = [
       ...new Set(
         rechargePayments
@@ -978,7 +976,7 @@ module.exports = {
     },
   });
 
-  // 5. Add isFirstTimeOfferUsed separately to every pack
+  // 5. Set isFirstTimeOfferUsed separately for each pack
   const data = packs.map((pack) => ({
     ...pack,
     isFirstTimeOfferUsed:
@@ -986,7 +984,7 @@ module.exports = {
       purchasedPackIds.includes(pack.id),
   }));
 
-  // 6. Return response
+  // 6. Return the response
   return {
     data,
     totalCount: data.length,
