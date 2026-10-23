@@ -187,19 +187,22 @@ type ProfileImageUploadResponse {
   price: Float!
   coins: Int!
   talktime: Int!
+  hideAfterFirstRecharge: Boolean!
   isFirstTimeOffer: Boolean!
   isFirstTimeOfferUsed: Boolean!
 }
-  type RechargePackById {
+ 
+type RechargePackById {
   id: ID!
   name: String!
   description: String
   price: Float!
   coins: Int!
   talktime: Int!
+  validityDays: Int!
   hideAfterFirstRecharge: Boolean!
-  
 }
+
 type RechargePackResponse {
   data: [RechargePack!]!
   totalCount: Int!
