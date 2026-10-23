@@ -388,7 +388,7 @@ module.exports = {
               session: {
                 include: {
                   astrologer: {
-                    select: { name: true,displayName:true },
+                    select: { name: true, displayName: true },
                   },
                 },
               },
@@ -919,77 +919,76 @@ module.exports = {
       }
     },
 
-  getRechargePacks: async (_, __, context) => {
-  const { user } = context;
+    getRechargePacks: async (_, __, context) => {
+      const { user } = context;
 
-  let where = {
-    isActive: true,
-  };
+      let where = {
+        isActive: true,
+      };
 
-  let purchasedPackIds = [];
+      let purchasedPackIds = [];
 
-  if (user?.id) {
-    // 1. Get all successful payments made by the user
-    const rechargePayments = await prisma.payment.findMany({
-      where: {
-        userId: user.id,
-        status: "SUCCESS",
-      },
-      select: {
-        rechargePackId: true,
-      },
-    });
-
-    // 2. Extract unique purchased recharge pack IDs
-    // Ignore null or undefined rechargePackId values
-    purchasedPackIds = [
-      ...new Set(
-        rechargePayments
-          .map((payment) => payment.rechargePackId)
-          .filter(Boolean)
-      ),
-    ];
-
-    // 3. Preserve existing pack visibility behavior
-    where = {
-      isActive: true,
-      NOT: {
-        AND: [
-          {
-            hideAfterFirstRecharge: true,
+      if (user?.id) {
+        // 1. Get all successful payments made by the user
+        const rechargePayments = await prisma.payment.findMany({
+          where: {
+            userId: user.id,
+            status: "SUCCESS",
           },
-          {
-            id: {
-              in: purchasedPackIds,
-            },
+          select: {
+            rechargePackId: true,
           },
-        ],
-      },
-    };
-  }
+        });
 
-  // 4. Fetch active recharge packs
-  const packs = await prisma.rechargePack.findMany({
-    where,
-    orderBy: {
-      price: "asc",
+        // 2. Extract unique purchased recharge pack IDs
+        // Ignore null or undefined rechargePackId values
+        purchasedPackIds = [
+          ...new Set(
+            rechargePayments
+              .map((payment) => payment.rechargePackId)
+              .filter(Boolean),
+          ),
+        ];
+
+        // 3. Preserve existing pack visibility behavior
+        where = {
+          isActive: true,
+          NOT: {
+            AND: [
+              {
+                hideAfterFirstRecharge: true,
+              },
+              {
+                id: {
+                  in: purchasedPackIds,
+                },
+              },
+            ],
+          },
+        };
+      }
+
+      // 4. Fetch active recharge packs
+      const packs = await prisma.rechargePack.findMany({
+        where,
+        orderBy: {
+          price: "asc",
+        },
+      });
+
+      // 5. Set isFirstTimeOfferUsed separately for each pack
+      const data = packs.map((pack) => ({
+        ...pack,
+        isFirstTimeOfferUsed:
+          pack.isFirstTimeOffer === true && purchasedPackIds.includes(pack.id),
+      }));
+
+      // 6. Return the response
+      return {
+        data,
+        totalCount: data.length,
+      };
     },
-  });
-
-  // 5. Set isFirstTimeOfferUsed separately for each pack
-  const data = packs.map((pack) => ({
-    ...pack,
-    isFirstTimeOfferUsed:
-      pack.isFirstTimeOffer === true &&
-      purchasedPackIds.includes(pack.id),
-  }));
-
-  // 6. Return the response
-  return {
-    data,
-    totalCount: data.length,
-  };
-},
     getActiveSkills: async () => {
       return prisma.skill.findMany({
         where: {
@@ -5292,18 +5291,28 @@ module.exports = {
         // ======================
         // CREATE RAZORPAY ORDER
         // ======================
+        let isFirstRecharge = false;
 
-        const previousSuccessfulRecharge = await prisma.paymentOrder.findFirst({
-          where: {
-            userId,
-            status: "PAID",
-          },
-          select: {
-            id: true,
-          },
-        });
+        // Check whether the admin enabled the offer for this pack
+        if (pack.isFirstTimeOffer === true) {
+          // Check whether this user previously purchased
+          // this specific pack successfully
+          const previousSuccessfulRecharge =
+            await prisma.paymentOrder.findFirst({
+              where: {
+                userId,
+                rechargePackId: pack.id,
+                status: "PAID",
+              },
+              select: {
+                id: true,
+              },
+            });
 
-        const isFirstRecharge = !previousSuccessfulRecharge;
+          // Offer is available only if this pack was never purchased
+          isFirstRecharge = !previousSuccessfulRecharge;
+        }
+
         const notes = {
           userId,
           rechargePackId: pack.id,
@@ -6553,88 +6562,85 @@ module.exports = {
       });
     },
 
-createPujaBooking: async (_, { input }, { user }) => {
-  if (!user?.id) {
-    throw new GraphQLError("Please login to book a puja.");
-  }
+    createPujaBooking: async (_, { input }, { user }) => {
+      if (!user?.id) {
+        throw new GraphQLError("Please login to book a puja.");
+      }
 
-  const { pujaId, quantity, mantraOptionId } = input;
+      const { pujaId, quantity, mantraOptionId } = input;
 
-  if (!pujaId) {
-    throw new GraphQLError("Puja ID is required.");
-  }
+      if (!pujaId) {
+        throw new GraphQLError("Puja ID is required.");
+      }
 
-  if (!Number.isInteger(quantity) || quantity < 1 || quantity > 20) {
-    throw new GraphQLError("Quantity must be between 1 and 20.");
-  }
+      if (!Number.isInteger(quantity) || quantity < 1 || quantity > 20) {
+        throw new GraphQLError("Quantity must be between 1 and 20.");
+      }
 
-  // Verify the authenticated user exists in the database.
-  const dbUser = await prisma.user.findUnique({
-    where: { id: user.id },
-    select: { id: true },
-  });
+      // Verify the authenticated user exists in the database.
+      const dbUser = await prisma.user.findUnique({
+        where: { id: user.id },
+        select: { id: true },
+      });
 
-  if (!dbUser) {
-    throw new GraphQLError(
-      "Authenticated user was not found in the database. Please log in again."
-    );
-  }
+      if (!dbUser) {
+        throw new GraphQLError(
+          "Authenticated user was not found in the database. Please log in again.",
+        );
+      }
 
-  const puja = await prisma.pujaService.findUnique({
-    where: { id: pujaId },
-    include: {
-      mantraOptions: {
-        orderBy: { sortOrder: "asc" },
-      },
+      const puja = await prisma.pujaService.findUnique({
+        where: { id: pujaId },
+        include: {
+          mantraOptions: {
+            orderBy: { sortOrder: "asc" },
+          },
+        },
+      });
+
+      if (!puja) {
+        throw new GraphQLError("Puja service not found.");
+      }
+
+      // Use the requested mantra, or default to the first sorted option.
+      const selectedMantra = mantraOptionId
+        ? puja.mantraOptions.find((option) => option.id === mantraOptionId)
+        : (puja.mantraOptions[0] ?? null);
+
+      if (!selectedMantra) {
+        throw new GraphQLError(
+          mantraOptionId
+            ? "Selected mantra is not available for this puja."
+            : "No mantra options are available for this puja.",
+        );
+      }
+
+      // Price comes from the selected mantra, not puja.price.
+      const unitPrice = Number(selectedMantra.offerPrice);
+
+      if (!Number.isFinite(unitPrice) || unitPrice < 0) {
+        throw new GraphQLError("Invalid selected mantra price.");
+      }
+
+      const totalAmount = unitPrice * quantity;
+
+      return prisma.pujaBooking.create({
+        data: {
+          userId: dbUser.id,
+          pujaId: puja.id,
+
+          mantraOptionId: selectedMantra.id,
+          mantraOptionName: selectedMantra.name,
+
+          quantity,
+          unitPrice,
+          totalAmount,
+
+          paymentStatus: "PENDING",
+          bookingStatus: "PENDING",
+        },
+      });
     },
-  });
-
-  if (!puja) {
-    throw new GraphQLError("Puja service not found.");
-  }
-
-  // Use the requested mantra, or default to the first sorted option.
-  const selectedMantra = mantraOptionId
-    ? puja.mantraOptions.find(
-        (option) => option.id === mantraOptionId
-      )
-    : puja.mantraOptions[0] ?? null;
-
-  if (!selectedMantra) {
-    throw new GraphQLError(
-      mantraOptionId
-        ? "Selected mantra is not available for this puja."
-        : "No mantra options are available for this puja."
-    );
-  }
-
-  // Price comes from the selected mantra, not puja.price.
-  const unitPrice = Number(selectedMantra.offerPrice);
-
-  if (!Number.isFinite(unitPrice) || unitPrice < 0) {
-    throw new GraphQLError("Invalid selected mantra price.");
-  }
-
-  const totalAmount = unitPrice * quantity;
-
-  return prisma.pujaBooking.create({
-    data: {
-      userId: dbUser.id,
-      pujaId: puja.id,
-
-      mantraOptionId: selectedMantra.id,
-      mantraOptionName: selectedMantra.name,
-
-      quantity,
-      unitPrice,
-      totalAmount,
-
-      paymentStatus: "PENDING",
-      bookingStatus: "PENDING",
-    },
-  });
-},
-
 
     createPujaOrder: async (_, { input }, context) => {
       try {
