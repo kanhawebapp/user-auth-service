@@ -689,6 +689,7 @@ model RechargePack {
   transactions  WalletTransaction[]
   coupons       Coupon[]            @relation("CouponToRechargePack")
  hideAfterFirstRecharge Boolean @default(false)
+  isFirstTimeOffer Boolean @default(false)
   @@index([isActive])
   @@index([price])
   @@index([coins])
