@@ -180,20 +180,17 @@ type ProfileImageUploadResponse {
   # -----------------------------------------
   # start recharge pack section
   # -----------------------------------------
-  type RechargePack {
+ type RechargePack {
   id: ID!
   name: String!
   description: String
   price: Float!
   coins: Int!
   talktime: Int!
-  validityDays: Int!
-  isActive: Boolean!
-  hideAfterFirstRecharge: Boolean!
+  isFirstTimeOffer: Boolean!
+  isFirstTimeOfferUsed: Boolean!
 }
-
 type RechargePackResponse {
-  isFirstRecharge: Boolean!
   data: [RechargePack!]!
   totalCount: Int!
 }
