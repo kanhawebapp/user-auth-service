@@ -388,7 +388,7 @@ module.exports = {
               session: {
                 include: {
                   astrologer: {
-                    select: { name: true },
+                    select: { name: true,displayName:true },
                   },
                 },
               },
@@ -414,7 +414,7 @@ module.exports = {
           description: t.description,
 
           astrologerName:
-            t.type === "DEBIT" ? t.session?.astrologer?.name || "" : "",
+            t.type === "DEBIT" ? t.session?.astrologer?.displayName || "" : "",
 
           createdAt: t.createdAt,
         }));
