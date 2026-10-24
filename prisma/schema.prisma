@@ -181,6 +181,7 @@ model User {
   couponRedemptions CouponRedemption[]
   pujaBookings PujaBooking[]
   pujaPaymentOrders PujaPaymentOrder[]
+  servicesBankPaymentLogs ServicesBankPaymentLog[]
 
   @@unique([countryCode, mobile])
 }
@@ -688,7 +689,7 @@ model RechargePack {
   paymentOrders PaymentOrder[]
   transactions  WalletTransaction[]
   coupons       Coupon[]            @relation("CouponToRechargePack")
- hideAfterFirstRecharge Boolean @default(false)
+  hideAfterFirstRecharge Boolean @default(false)
   isFirstTimeOffer Boolean @default(false)
   @@index([isActive])
   @@index([price])
@@ -2051,4 +2052,52 @@ model PujaPaymentOrder {
   @@index([bookingId])
   @@index([status])
   @@index([couponId])
+}
+
+
+enum BankPaymentServiceType {
+  PUJA
+  HEALING
+}
+
+model ServicesBankPaymentLog {
+  id String @id @default(uuid())
+  userId String
+  user User @relation(fields: [userId], references: [id])
+  serviceType BankPaymentServiceType
+  serviceId String
+  bookingId String?
+  amount Float
+  provider PaymentProvider
+  razorpayOrderId String
+  razorpayPaymentId String? @unique
+  status PaymentStatus
+  invoiceNo String? @unique
+  taxableAmount Float?
+  gstRate Float?
+  cgst Float?
+  sgst Float?
+  igst Float?
+  totalTax Float?
+  totalAmount Float?
+  pgChargeRate Float?
+  pgCharge Float?
+  pgIgst Float?
+  pgTotal Float?
+  receivableAmount Float?
+  country String?
+  state String?
+  city String?
+  platform String?
+  couponId String?
+  discount Float? @default(0)
+  cashback Float? @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([userId])
+  @@index([serviceType, serviceId])
+  @@index([bookingId])
+  @@index([razorpayOrderId])
+  @@index([status])
+  @@index([createdAt])
 }
