@@ -6,13 +6,13 @@ module.exports = gql`
     FEMALE
     OTHER
   }
-type ProfileImageUploadResponse {
-  success: Boolean!
-  message: String!
-  url: String
-  filename: String
-  user: User
-}
+  type ProfileImageUploadResponse {
+    success: Boolean!
+    message: String!
+    url: String
+    filename: String
+    user: User
+  }
 
   type User {
     id: ID!
@@ -22,7 +22,7 @@ type ProfileImageUploadResponse {
     gender: Gender
     birthDate: String
     birthTime: String
-     birthPlace: String
+    birthPlace: String
     occupation: String
     isActive: Boolean
     isDeleted: Boolean
@@ -31,7 +31,7 @@ type ProfileImageUploadResponse {
     user_status: Int
     wallet: UserWallet
     stats: UserDashboardStats
-      profileImage: String
+    profileImage: String
   }
 
   type AuthPayload {
@@ -60,8 +60,8 @@ type ProfileImageUploadResponse {
     birthDate: String
     birthTime: String
     occupation: String
-      birthPlace: String
-       profileImage: String
+    birthPlace: String
+    profileImage: String
   }
   # -----------------------------------------
   # End user update input section
@@ -180,33 +180,33 @@ type ProfileImageUploadResponse {
   # -----------------------------------------
   # start recharge pack section
   # -----------------------------------------
- type RechargePack {
-  id: ID!
-  name: String!
-  description: String
-  price: Float!
-  coins: Int!
-  talktime: Int!
-  hideAfterFirstRecharge: Boolean!
-  isFirstTimeOffer: Boolean!
-  isFirstTimeOfferUsed: Boolean!
-}
- 
-type RechargePackById {
-  id: ID!
-  name: String!
-  description: String
-  price: Float!
-  coins: Int!
-  talktime: Int!
-  validityDays: Int!
-  hideAfterFirstRecharge: Boolean!
-}
+  type RechargePack {
+    id: ID!
+    name: String!
+    description: String
+    price: Float!
+    coins: Int!
+    talktime: Int!
+    hideAfterFirstRecharge: Boolean!
+    isFirstTimeOffer: Boolean!
+    isFirstTimeOfferUsed: Boolean!
+  }
 
-type RechargePackResponse {
-  data: [RechargePack!]!
-  totalCount: Int!
-}
+  type RechargePackById {
+    id: ID!
+    name: String!
+    description: String
+    price: Float!
+    coins: Int!
+    talktime: Int!
+    validityDays: Int!
+    hideAfterFirstRecharge: Boolean!
+  }
+
+  type RechargePackResponse {
+    data: [RechargePack!]!
+    totalCount: Int!
+  }
   # -----------------------------------------
   # End recharge pack section
   # -----------------------------------------
@@ -426,41 +426,40 @@ type RechargePackResponse {
     FAILED
   }
 
- input SessionFilterInput {
-  status: SessionStatus
-  type: SessionType
-  fromDate: String
-  toDate: String
-  page: Int
-  limit: Int
-}
+  input SessionFilterInput {
+    status: SessionStatus
+    type: SessionType
+    fromDate: String
+    toDate: String
+    page: Int
+    limit: Int
+  }
 
-  
- type ChatSession {
-  id: ID
+  type ChatSession {
+    id: ID
 
-  userName: String
-  astrologerName: String
-  displayName: String
-  astrologerImage: String
+    userName: String
+    astrologerName: String
+    displayName: String
+    astrologerImage: String
 
-  type: SessionType
+    type: SessionType
 
-  startedAt: String
-  endedAt: String
+    startedAt: String
+    endedAt: String
 
-  durationSec: Int
-  durationMin: Int
+    durationSec: Int
+    durationMin: Int
 
-  ratePerMin: Int
-  ratePerSecond: Float
+    ratePerMin: Int
+    ratePerSecond: Float
 
-  totalCharge: Float
-  coinsEarned: Float
-  commission: Float
+    totalCharge: Float
+    coinsEarned: Float
+    commission: Float
 
-  status: SessionStatus
-}
+    status: SessionStatus
+  }
   type UserDashboardStats {
     walletBalance: Int
     totalRecharge: Float
@@ -757,10 +756,10 @@ type RechargePackResponse {
 
   #------------------ END GIFT SECTION ------------------
   #------------------ START BANNER SECTION --------------
-enum BannerType {
-  DESKTOP
-  MOBILE
-}
+  enum BannerType {
+    DESKTOP
+    MOBILE
+  }
   type Banner {
     id: ID!
     heading: String
@@ -944,16 +943,16 @@ enum BannerType {
   }
 
   type SendGiftResponse {
-  success: Boolean!
-  message: String!
-  userBalance: Float
-  astrologerBalance: Float
+    success: Boolean!
+    message: String!
+    userBalance: Float
+    astrologerBalance: Float
 
-  giftPrice: Float
-  commissionPercent: Float
-  astrologerEarning: Float
-  platformEarning: Float
-}
+    giftPrice: Float
+    commissionPercent: Float
+    astrologerEarning: Float
+    platformEarning: Float
+  }
 
   #-----END CODE FOR SEND GIFT TO ASTROLOGER---------------
   #----START code forsendgift history ----
@@ -1136,38 +1135,37 @@ enum BannerType {
   #------START VERIFY COUPON---
   #------END COUPON----------------------------------------
   input VerifyServiceCouponInput {
-  bookingId: ID!
-  couponCode: String!
-}
+    bookingId: ID!
+    couponCode: String!
+  }
 
-type VerifyServiceCouponResponse {
-  success: Boolean!
-  message: String
+  type VerifyServiceCouponResponse {
+    success: Boolean!
+    message: String
 
-  coupon: Coupon
+    coupon: Coupon
 
-  originalAmount: Float!
-  discount: Float!
-  discountedPrice: Float!
-  gstAmount: Float!
-  payableAmount: Float!
-  cashback: Float!
-}
-
+    originalAmount: Float!
+    discount: Float!
+    discountedPrice: Float!
+    gstAmount: Float!
+    payableAmount: Float!
+    cashback: Float!
+  }
 
   #-----START CODE FOR CREATE ORDER FOR HEALING SERVICES---
   #------------verify recharge coupon----
   type VerifyCouponResponse {
-  success: Boolean!
-  message: String
-  originalAmount: Float
-  discount: Float
-  discountedPrice: Float
-  cashback: Float
-  payableAmount: Float
-  gstAmount: Float
-  coupon: Coupon
-}
+    success: Boolean!
+    message: String
+    originalAmount: Float
+    discount: Float
+    discountedPrice: Float
+    cashback: Float
+    payableAmount: Float
+    gstAmount: Float
+    coupon: Coupon
+  }
 
   type CreateHealingOrderResponse {
     success: Boolean!
@@ -1268,21 +1266,21 @@ type VerifyServiceCouponResponse {
     DRAFT
     PUBLISHED
   }
- type LiveJoinResponse {
-  id: ID!
-  astrologerId: ID!
-  totalViews: Int!
+  type LiveJoinResponse {
+    id: ID!
+    astrologerId: ID!
+    totalViews: Int!
 
-  appId: String!
-  channelName: String!
-  uid: Int!
-  rtcToken: String!
+    appId: String!
+    channelName: String!
+    uid: Int!
+    rtcToken: String!
 
-  chatUserId: String!
-  chatToken: String!
-  chatRoomId: String!
-  chatAppKey: String!
-}
+    chatUserId: String!
+    chatToken: String!
+    chatRoomId: String!
+    chatAppKey: String!
+  }
   type PrivacyPage {
     id: ID
 
@@ -1382,113 +1380,110 @@ type VerifyServiceCouponResponse {
   }
 
   type PaymentInvoice {
-  id: ID!
+    id: ID!
 
-  invoiceNo: String
-  transactionId: String
-  razorpayOrderId: String
-  razorpayPaymentId: String
+    invoiceNo: String
+    transactionId: String
+    razorpayOrderId: String
+    razorpayPaymentId: String
 
-  amount: Float
-  discount: Float
-  taxableAmount: Float
+    amount: Float
+    discount: Float
+    taxableAmount: Float
 
-  sgst: Float
-  cgst: Float
-  igst: Float
+    sgst: Float
+    cgst: Float
+    igst: Float
 
-  sgstRate: Float
-  cgstRate: Float
-  igstRate: Float
-  gstRate: Float
+    sgstRate: Float
+    cgstRate: Float
+    igstRate: Float
+    gstRate: Float
 
-  totalTax: Float
-  totalAmount: Float
-  amountReceived: Float
-  amountInWords: String
+    totalTax: Float
+    totalAmount: Float
+    amountReceived: Float
+    amountInWords: String
 
-  userName: String
-  city: String
-  state: String
-  pincode: String
-  country: String
+    userName: String
+    city: String
+    state: String
+    pincode: String
+    country: String
 
-  placeOfSupply: String
+    placeOfSupply: String
 
-  supplierGSTIN: String
-  supplierAddress: String
-  website: String
-  email: String
+    supplierGSTIN: String
+    supplierAddress: String
+    website: String
+    email: String
 
-  recipientGSTIN: String
+    recipientGSTIN: String
 
-  transactionHistoryUrl: String
+    transactionHistoryUrl: String
 
-  hsnSac: String
-  reverseCharge: Boolean
-  panNumber: String
+    hsnSac: String
+    reverseCharge: Boolean
+    panNumber: String
 
-  createdAt: String
-}
+    createdAt: String
+  }
   #-------------END CALL RECORDING---
   #--------SOFT DELETE ----------
   type SoftDeleteUserResponse {
-  success: Boolean!
-  message: String!
-}
+    success: Boolean!
+    message: String!
+  }
   #----------END-----------
   input VerifyRechargeCouponInput {
-  rechargePackId: ID!
-  couponCode: String!
-}
- type SendLiveGiftResponse {
-  success: Boolean!
-  message: String!
-  giftId: ID!
-  giftName: String!
-  icon: String!
-  quantity: Int!
-  totalCoins: Int!
-  astrologerCoins: Int!
-  commissionCoins: Int!
-  userBalance: Int!
-  astrologerBalance: Int!
-  transactionId: ID!
-}
+    rechargePackId: ID!
+    couponCode: String!
+  }
+  type SendLiveGiftResponse {
+    success: Boolean!
+    message: String!
+    giftId: ID!
+    giftName: String!
+    icon: String!
+    quantity: Int!
+    totalCoins: Int!
+    astrologerCoins: Int!
+    commissionCoins: Int!
+    userBalance: Int!
+    astrologerBalance: Int!
+    transactionId: ID!
+  }
   #-------------------live gift----------
-type LiveGift {
-  id: ID!
-  name: String!
-  icon: String!
-  price: Int!
-}
+  type LiveGift {
+    id: ID!
+    name: String!
+    icon: String!
+    price: Int!
+  }
 
+  type LeaveLiveResponse {
+    success: Boolean!
+    message: String!
+    channelName: String!
+  }
 
-type LeaveLiveResponse {
-  success: Boolean!
-  message: String!
-  channelName: String!
-}
-  
   #Puja servicess
   enum PujaReviewStatus {
     PENDING
     APPROVED
     REJECTED
   }
-  
+
   input CreatePujaReviewInput {
     userId: ID!
-  pujaId: ID!
-  userName: String!
-  email: String
-  title: String!
-  rating: Int!
-  comment: String!
-  image: String
-}
-
-
+    pujaId: ID!
+    userName: String!
+    email: String
+    title: String!
+    rating: Int!
+    comment: String!
+    image: String
+  }
 
   type PujaFAQ {
     id: ID!
@@ -1499,124 +1494,154 @@ type LeaveLiveResponse {
     updatedAt: String!
   }
 
- type PujaReview {
-  id: ID!
-  pujaId: ID!
-  userId: ID
-  userName: String!
-  email: String
-  title: String
-  rating: Int!
-  comment: String!
-  image: String
-  status: PujaReviewStatus!
-  createdAt: String!
-  updatedAt: String!
-}
+  type PujaReview {
+    id: ID!
+    pujaId: ID!
+    userId: ID
+    userName: String!
+    email: String
+    title: String
+    rating: Int!
+    comment: String!
+    image: String
+    status: PujaReviewStatus!
+    createdAt: String!
+    updatedAt: String!
+  }
 
   input PujaFAQInput {
     question: String!
     answer: String!
   }
 
+  type PujaMantraOption {
+    id: ID!
+    name: String!
+    originalPrice: Float!
+    offerPrice: Float!
+    sortOrder: Int!
+    pujaId: ID!
+    createdAt: String!
+  }
 
-type PujaMantraOption {
-  id: ID!
-  name: String!
-  originalPrice: Float!
-  offerPrice: Float!
-  sortOrder: Int!
-  pujaId: ID!
-  createdAt: String!
-}
+  type PujaService {
+    id: ID!
+    title: String!
+    slug: String!
+    image: String!
+    category: String
 
-type PujaService {
-  id: ID!
-  title: String!
-  slug: String!
-  image: String!
-  category: String
+    shortDescription: String
+    description: String
+    benefits: String
+    howToPerform: String
+    packaging: String
 
-  shortDescription: String
-  description: String
-  benefits: String
-  howToPerform: String
-  packaging: String
+    price: Float!
+    mrp: Float
+    discount: Float
 
-  price: Float!
-  mrp: Float
-  discount: Float
+    customersCount: Int!
+    rating: Float!
 
-  customersCount: Int!
-  rating: Float!
+    mantraOptions: [PujaMantraOption!]!
+    faqs: [PujaFAQ!]!
+    reviews: [PujaReview!]!
 
-  mantraOptions: [PujaMantraOption!]!
-  faqs: [PujaFAQ!]!
-  reviews: [PujaReview!]!
-
-  createdAt: String!
-  updatedAt: String!
-}
+    createdAt: String!
+    updatedAt: String!
+  }
 
   type PujaBooking {
-  id: ID!
-  userId: ID!
-  pujaId: ID!
-  puja: PujaService
-  mantraOptionId: String
-  mantraOptionName: String
-  quantity: Int!
-  unitPrice: Float!
-  totalAmount: Float!
-  paymentStatus: String!
-  bookingStatus: String!
-  createdAt: String!
-  updatedAt: String!
-}
+    id: ID!
+    userId: ID!
+    pujaId: ID!
+    puja: PujaService
+    mantraOptionId: String
+    mantraOptionName: String
+    quantity: Int!
+    unitPrice: Float!
+    totalAmount: Float!
+    paymentStatus: String!
+    bookingStatus: String!
+    createdAt: String!
+    updatedAt: String!
+  }
   input CreatePujaBookingInput {
-  pujaId: ID!
-  quantity: Int!
-  mantraOptionId: String
-}
+    pujaId: ID!
+    quantity: Int!
+    mantraOptionId: String
+  }
 
- type CreatePujaOrderResponse {
-  success: Boolean!
-  message: String!
-  orderId: String
-  amount: Float
-  currency: String
-  bookingId: String
-  pujaTitle: String
-  totalAmount: Float
-}
+  type CreatePujaOrderResponse {
+    success: Boolean!
+    message: String!
+    orderId: String
+    amount: Float
+    currency: String
+    bookingId: String
+    pujaTitle: String
+    totalAmount: Float
+  }
 
-input CreatePujaOrderInput {
-  bookingId: ID!
-  couponCode: String
-}
+  input CreatePujaOrderInput {
+    bookingId: ID!
+    couponCode: String
+  }
 
-type PujaPaymentOrder {
-  id: ID!
-  userId: ID!
-  bookingId: ID!
-  razorpayOrderId: String
-  totalAmount: Float!
-  walletAmount: Float!
-  payableAmount: Float!
-  couponId: String
-  discount: Float!
-  cashback: Float!
-  status: String!
-  createdAt: String!
-  updatedAt: String!
-}
-  
+  type PujaPaymentOrder {
+    id: ID!
+    userId: ID!
+    bookingId: ID!
+    razorpayOrderId: String
+    totalAmount: Float!
+    walletAmount: Float!
+    payableAmount: Float!
+    couponId: String
+    discount: Float!
+    cashback: Float!
+    status: String!
+    createdAt: String!
+    updatedAt: String!
+  }
+
+  type UserServicesBankPaymentLog {
+    id: ID!
+    userId: String!
+    serviceType: String!
+    serviceId: String!
+    bookingId: String
+
+    invoiceNo: String
+    taxableAmount: Float
+    totalTax: Float
+
+    createdAt: DateTime!
+    amount: Float!
+
+    serviceName: String
+  }
+
+  type UserServicesBankPaymentPagination {
+    totalRecords: Int!
+    totalPages: Int!
+    currentPage: Int!
+    limit: Int!
+  }
+
+  type GetServicesBankPaymentLogsResponse {
+    success: Boolean!
+    message: String!
+    data: [UserServicesBankPaymentLog!]!
+    pagination: UserServicesBankPaymentPagination!
+  }
+
   type Query {
-      # puja services
-   pujaServices: [PujaService!]!
-  pujaService(id: ID, slug: String): PujaService
-  pujaReviews(pujaId: ID!): [PujaReview!]!
-   getPaymentInvoice(transactionId: ID!): PaymentInvoice
+    # puja services
+    pujaServices: [PujaService!]!
+    pujaService(id: ID, slug: String): PujaService
+    pujaReviews(pujaId: ID!): [PujaReview!]!
+    getPaymentInvoice(transactionId: ID!): PaymentInvoice
     getAstrologerCategories: [AstrologerCategory!]!
     getActiveSkills: [Skill!]!
     getActiveProblems: [Problem!]!
@@ -1716,11 +1741,18 @@ type PujaPaymentOrder {
       page: Int
       limit: Int
     ): AstrologerReviewResponse!
-     getSimilarAstrologers(astrologerId: ID!): [Astrologer!]!
+    getSimilarAstrologers(astrologerId: ID!): [Astrologer!]!
 
-     getLiveGifts: [LiveGift!]!
-     getPujaBooking(bookingId: ID!): PujaBooking
-     getPujaPaymentOrder(bookingId: ID!): PujaPaymentOrder
+    getLiveGifts: [LiveGift!]!
+    getPujaBooking(bookingId: ID!): PujaBooking
+    getPujaPaymentOrder(bookingId: ID!): PujaPaymentOrder
+    getServicesBankPaymentLogs(
+      page: Int = 1
+      limit: Int = 10
+      serviceType: String
+      startDate: DateTime
+      endDate: DateTime
+    ): GetServicesBankPaymentLogsResponse!
   }
 
   type Mutation {
@@ -1777,39 +1809,33 @@ type PujaPaymentOrder {
     ): UploadCallRecordingResponse!
 
     verifyServiceCoupon(
-  input: VerifyServiceCouponInput!
-): VerifyServiceCouponResponse!
+      input: VerifyServiceCouponInput!
+    ): VerifyServiceCouponResponse!
 
-   verifyRechargeCoupon(
-    input: VerifyRechargeCouponInput!
-  ): VerifyServiceCouponResponse!
+    verifyRechargeCoupon(
+      input: VerifyRechargeCouponInput!
+    ): VerifyServiceCouponResponse!
 
+    uploadProfileImage(file: Upload!): ProfileImageUploadResponse!
 
-      uploadProfileImage(
-    file: Upload!
-  ): ProfileImageUploadResponse!
+    softDeleteUser: SoftDeleteUserResponse!
 
-  softDeleteUser: SoftDeleteUserResponse!
+    sendLiveGift(
+      streamId: ID!
+      giftId: ID!
+      quantity: Int!
+    ): SendLiveGiftResponse!
 
- sendLiveGift(
-    streamId: ID!
-    giftId: ID!
-    quantity: Int!
-  ): SendLiveGiftResponse!
+    leaveLive(channelName: String!): LeaveLiveResponse!
 
-  leaveLive(channelName: String!): LeaveLiveResponse!
-  
-  createPujaReview(input: CreatePujaReviewInput!): PujaReview!
+    createPujaReview(input: CreatePujaReviewInput!): PujaReview!
 
-   createPujaBooking(input: CreatePujaBookingInput!): PujaBooking!
+    createPujaBooking(input: CreatePujaBookingInput!): PujaBooking!
 
-   createPujaOrder(
-    input: CreatePujaOrderInput!
-  ): CreatePujaOrderResponse!
+    createPujaOrder(input: CreatePujaOrderInput!): CreatePujaOrderResponse!
 
-  verifyPujaCoupon(
-  input: VerifyServiceCouponInput!
-): VerifyServiceCouponResponse!
-
+    verifyPujaCoupon(
+      input: VerifyServiceCouponInput!
+    ): VerifyServiceCouponResponse!
   }
 `;

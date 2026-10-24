@@ -3417,6 +3417,161 @@ module.exports = {
       }
       return paymentOrder;
     },
+    
+
+getServicesBankPaymentLogs: async (_, args, context) => {
+  const { prisma } = context;
+
+  if (!context.user) {
+    throw new Error("Unauthorized");
+  }
+
+  try {
+    const {
+      page = 1,
+      limit = 10,
+      serviceType,
+      startDate,
+      endDate,
+    } = args;
+
+    // Validate pagination
+    const currentPage = Math.max(1, Math.floor(Number(page) || 1));
+    const pageLimit = Math.min(
+      100,
+      Math.max(1, Math.floor(Number(limit) || 10))
+    );
+    const skip = (currentPage - 1) * pageLimit;
+
+    // Only fetch the logged-in user's payments
+    const where = {
+      userId: context.user.id,
+      status: "SUCCESS",
+    };
+
+    // Filter by service type: SERVICE or PUJA
+    if (serviceType) {
+      where.serviceType = serviceType;
+    }
+
+    // Filter by date range using createdAt
+    if (startDate || endDate) {
+      where.createdAt = {};
+
+      if (startDate) {
+        const start = new Date(startDate);
+
+        if (Number.isNaN(start.getTime())) {
+          throw new Error("Invalid startDate");
+        }
+
+        where.createdAt.gte = start;
+      }
+
+      if (endDate) {
+        const end = new Date(endDate);
+
+        if (Number.isNaN(end.getTime())) {
+          throw new Error("Invalid endDate");
+        }
+
+        where.createdAt.lte = end;
+      }
+
+      if (
+        where.createdAt.gte &&
+        where.createdAt.lte &&
+        where.createdAt.gte > where.createdAt.lte
+      ) {
+        throw new Error("startDate cannot be greater than endDate");
+      }
+    }
+
+    // Fetch records and total count
+    const [paymentLogs, totalRecords] = await Promise.all([
+      prisma.servicesBankPaymentLog.findMany({
+        where,
+        skip,
+        take: pageLimit,
+        select: {
+          id: true,
+          userId: true,
+          serviceType: true,
+          serviceId: true,
+          bookingId: true,
+          invoiceNo: true,
+          taxableAmount: true,
+          totalTax: true,
+          createdAt: true,
+          amount: true,
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+      }),
+
+      prisma.servicesBankPaymentLog.count({
+        where,
+      }),
+    ]);
+
+    // Resolve service name based on service type
+    const getServiceName = async (type, serviceId) => {
+      if (!serviceId) {
+        return null;
+      }
+
+      let service = null;
+
+      if (type === "PUJA") {
+        service = await prisma.pujaService.findUnique({
+          where: { id: serviceId },
+          select: {
+            name: true,
+          },
+        });
+      } else if (type === "SERVICE") {
+        // Change this model/field if your Prisma schema differs.
+        service = await prisma.service.findUnique({
+          where: { id: serviceId },
+          select: {
+            name: true,
+          },
+        });
+      }
+
+      return service?.name || null;
+    };
+
+    // Attach service name to each record
+    const data = await Promise.all(
+      paymentLogs.map(async (payment) => ({
+        ...payment,
+        serviceName: await getServiceName(
+          payment.serviceType,
+          payment.serviceId
+        ),
+      }))
+    );
+
+    return {
+      success: true,
+      message: "Service payment logs fetched successfully",
+      data,
+      pagination: {
+        totalRecords,
+        totalPages: Math.ceil(totalRecords / pageLimit),
+        currentPage,
+        limit: pageLimit,
+      },
+    };
+  } catch (error) {
+    console.error("Error fetching service payment logs:", error);
+    throw error;
+  }
+},
+
+
   },
   //----------------start code for mutation ----------------------------
   Mutation: {
