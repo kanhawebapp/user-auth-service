@@ -3595,6 +3595,179 @@ getServicesBankPaymentLogs: async (
 },
 
 
+getServicesInvoice: async (_, { transactionId }) => {
+  try {
+    // 1. Find the service payment transaction
+    const transaction = await prisma.servicesBankPaymentLog.findFirst({
+      where: {
+        id: transactionId,
+      },
+      include: {
+        user: true,
+      },
+    });
+
+    if (!transaction) {
+      throw new Error("Service payment transaction not found");
+    }
+
+    // 2. Validate payment status
+    if (transaction.status !== "SUCCESS") {
+      throw new Error("Invoice is available only for successful payments");
+    }
+
+    // 3. Calculate invoice amounts
+    const amount = Number(transaction.totalAmount ?? transaction.amount ?? 0);
+    const gstRate = Number(transaction.gstRate ?? 18);
+
+    // Prefer the stored taxable amount and tax values
+    const taxableAmount =
+      transaction.taxableAmount != null
+        ? Number(transaction.taxableAmount)
+        : amount / (1 + gstRate / 100);
+
+    const sgst = Number(transaction.sgst ?? 0);
+    const cgst = Number(transaction.cgst ?? 0);
+    const igst = Number(transaction.igst ?? 0);
+
+    const totalTax =
+      transaction.totalTax != null
+        ? Number(transaction.totalTax)
+        : sgst + cgst + igst || amount - taxableAmount;
+
+    // 4. Fetch service name
+    let serviceName = "-";
+
+    if (transaction.serviceType === "PUJA") {
+      const pujaService = await prisma.pujaService.findUnique({
+        where: {
+          id: transaction.serviceId,
+        },
+        select: {
+          name: true,
+        },
+      });
+
+      serviceName = pujaService?.name || "-";
+    } else if (transaction.serviceType === "SERVICE") {
+      const service = await prisma.service.findUnique({
+        where: {
+          id: transaction.serviceId,
+        },
+        select: {
+          name: true,
+        },
+      });
+
+      serviceName = service?.name || "-";
+    }
+
+    // 5. Return invoice details
+    return {
+      id: transaction.id,
+
+      invoiceNo:
+        transaction.invoiceNo ||
+        `INV-${transaction.id.slice(0, 8)}`,
+
+      transactionId:
+        transaction.razorpayPaymentId ||
+        transaction.id,
+
+      razorpayOrderId: transaction.razorpayOrderId || null,
+
+      razorpayPaymentId: transaction.razorpayPaymentId || null,
+
+      amount: taxableAmount,
+
+      discount: Number(transaction.discount ?? 0),
+
+      taxableAmount,
+
+      sgst,
+      cgst,
+      igst,
+
+      // ServicesBankPaymentLog stores gstRate, not separate tax rates.
+      sgstRate:
+        transaction.gstRate != null && igst === 0
+          ? Number(transaction.gstRate) / 2
+          : 0,
+
+      cgstRate:
+        transaction.gstRate != null && igst === 0
+          ? Number(transaction.gstRate) / 2
+          : 0,
+
+      igstRate:
+        igst > 0
+          ? gstRate
+          : 0,
+
+      gstRate,
+
+      totalTax,
+
+      totalAmount: amount,
+
+      amountReceived: Number(
+        transaction.receivableAmount ?? amount
+      ),
+
+      amountInWords: this.amountInWords
+        ? this.amountInWords(amount)
+        : null,
+
+      userName: transaction.user?.name || "-",
+
+      city: transaction.city || "-",
+
+      state: transaction.state || "-",
+
+      pincode: transaction.pincode || "-",
+
+      country: transaction.country || transaction.user?.country || "India",
+
+      placeOfSupply: transaction.state || "-",
+
+      supplierGSTIN: "07ABBFM1961C1ZN",
+
+      supplierAddress:
+        "2ND FLOOR, 1511/2B, Kotla Mubarakpur, Bhishma Pitamah Marg, Wazir Nagar, New Delhi, South East Delhi, Delhi, 110003",
+
+      website: "www.dhwaniastro.com",
+
+      email: "support@dhwaniastro.com",
+
+      recipientGSTIN: "-",
+
+      transactionHistoryUrl: "-",
+
+      hsnSac: "999799",
+
+      reverseCharge: false,
+
+      panNumber: "ABBFM1961C",
+
+      serviceType: transaction.serviceType,
+
+      serviceId: transaction.serviceId,
+
+      serviceName,
+
+      createdAt: transaction.createdAt,
+    };
+  } catch (error) {
+    console.error("getServicesInvoice error:", error);
+
+    throw new Error(
+      error.message || "Failed to fetch service invoice"
+    );
+  }
+},
+
+
+
   },
   //----------------start code for mutation ----------------------------
   Mutation: {

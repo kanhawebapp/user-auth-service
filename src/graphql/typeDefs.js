@@ -1636,6 +1636,60 @@ module.exports = gql`
     pagination: UserServicesBankPaymentPagination!
   }
 
+  type ServicesInvoice {
+  id: ID!
+  invoiceNo: String
+
+  transactionId: String
+  razorpayOrderId: String
+  razorpayPaymentId: String
+
+  amount: Float
+  discount: Float
+  taxableAmount: Float
+
+  sgst: Float
+  cgst: Float
+  igst: Float
+
+  sgstRate: Float
+  cgstRate: Float
+  igstRate: Float
+  gstRate: Float
+
+  totalTax: Float
+  totalAmount: Float
+  amountReceived: Float
+  amountInWords: String
+
+  userName: String
+  city: String
+  state: String
+  pincode: String
+  country: String
+
+  placeOfSupply: String
+
+  supplierGSTIN: String
+  supplierAddress: String
+  website: String
+  email: String
+
+  recipientGSTIN: String
+
+  transactionHistoryUrl: String
+
+  hsnSac: String
+  reverseCharge: Boolean
+  panNumber: String
+
+  serviceType: String
+  serviceId: String
+  serviceName: String
+
+  createdAt: String
+}
+
   type Query {
     # puja services
     pujaServices: [PujaService!]!
@@ -1753,6 +1807,8 @@ module.exports = gql`
       startDate: String
       endDate: String
     ): GetServicesBankPaymentLogsResponse!
+
+    getServicesInvoice(transactionId: ID!): ServicesInvoice!
   }
 
   type Mutation {
