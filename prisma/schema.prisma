@@ -2057,7 +2057,7 @@ model PujaPaymentOrder {
 
 enum BankPaymentServiceType {
   PUJA
-  HEALING
+  SERVICE
 }
 
 model ServicesBankPaymentLog {
