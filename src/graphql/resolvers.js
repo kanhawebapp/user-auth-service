@@ -3419,95 +3419,99 @@ module.exports = {
     },
     
 
-getServicesBankPaymentLogs: async (_, args, context) => {
-  const { prisma } = context;
-
-  if (!context.user) {
-    throw new Error("Unauthorized");
-  }
+getServicesBankPaymentLogs: async (
+  _,
+  {
+    page = 1,
+    limit = 10,
+    serviceType,
+    startDate,
+    endDate,
+  },
+  context
+) => {
+  const { prisma, user } = context;
 
   try {
-    const {
-      page = 1,
-      limit = 10,
-      serviceType,
-      startDate,
-      endDate,
-    } = args;
+    // 1. Validate authentication
+    if (!user?.id) {
+      throw new Error("Unauthorized: Please login to continue");
+    }
 
-    // Validate pagination
-    const currentPage = Math.max(1, Math.floor(Number(page) || 1));
-    const pageLimit = Math.min(
-      100,
-      Math.max(1, Math.floor(Number(limit) || 10))
-    );
+    // 2. Validate pagination
+    const currentPage = Math.max(1, Number(page) || 1);
+    const pageLimit = Math.max(1, Math.min(100, Number(limit) || 10));
     const skip = (currentPage - 1) * pageLimit;
 
-    // Only fetch the logged-in user's payments
+    // 3. Build filters
     const where = {
-      userId: context.user.id,
-      status: "SUCCESS",
+      userId: user.id,
     };
 
-    // Filter by service type: SERVICE or PUJA
+    // Optional service type filter
     if (serviceType) {
-      where.serviceType = serviceType;
+      const normalizedServiceType = serviceType.toUpperCase();
+
+      if (!["SERVICE", "PUJA"].includes(normalizedServiceType)) {
+        throw new Error(
+          "Invalid serviceType. Allowed values are SERVICE and PUJA."
+        );
+      }
+
+      where.serviceType = normalizedServiceType;
     }
 
-    // Filter by date range using createdAt
-    if (startDate || endDate) {
-      where.createdAt = {};
+    // Optional start date filter
+    if (startDate) {
+      const parsedStartDate = new Date(startDate);
 
-      if (startDate) {
-        const start = new Date(startDate);
-
-        if (Number.isNaN(start.getTime())) {
-          throw new Error("Invalid startDate");
-        }
-
-        where.createdAt.gte = start;
+      if (Number.isNaN(parsedStartDate.getTime())) {
+        throw new Error("Invalid startDate. Please provide a valid date.");
       }
 
-      if (endDate) {
-        const end = new Date(endDate);
-
-        if (Number.isNaN(end.getTime())) {
-          throw new Error("Invalid endDate");
-        }
-
-        where.createdAt.lte = end;
-      }
-
-      if (
-        where.createdAt.gte &&
-        where.createdAt.lte &&
-        where.createdAt.gte > where.createdAt.lte
-      ) {
-        throw new Error("startDate cannot be greater than endDate");
-      }
+      where.createdAt = {
+        ...where.createdAt,
+        gte: parsedStartDate,
+      };
     }
 
-    // Fetch records and total count
+    // Optional end date filter
+    if (endDate) {
+      const parsedEndDate = new Date(endDate);
+
+      if (Number.isNaN(parsedEndDate.getTime())) {
+        throw new Error("Invalid endDate. Please provide a valid date.");
+      }
+
+      // If endDate is date-only (YYYY-MM-DD), include the entire day.
+      if (/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+        parsedEndDate.setUTCHours(23, 59, 59, 999);
+      }
+
+      where.createdAt = {
+        ...where.createdAt,
+        lte: parsedEndDate,
+      };
+    }
+
+    // Validate date range
+    if (
+      where.createdAt?.gte &&
+      where.createdAt?.lte &&
+      where.createdAt.gte > where.createdAt.lte
+    ) {
+      throw new Error("startDate cannot be later than endDate.");
+    }
+
+    // 4. Fetch payment logs and total count
     const [paymentLogs, totalRecords] = await Promise.all([
       prisma.servicesBankPaymentLog.findMany({
         where,
-        skip,
-        take: pageLimit,
-        select: {
-          id: true,
-          userId: true,
-          serviceType: true,
-          serviceId: true,
-          bookingId: true,
-          invoiceNo: true,
-          taxableAmount: true,
-          totalTax: true,
-          createdAt: true,
-          amount: true,
-        },
         orderBy: {
           createdAt: "desc",
         },
+        skip,
+        take: pageLimit,
       }),
 
       prisma.servicesBankPaymentLog.count({
@@ -3515,59 +3519,78 @@ getServicesBankPaymentLogs: async (_, args, context) => {
       }),
     ]);
 
-    // Resolve service name based on service type
-    const getServiceName = async (type, serviceId) => {
-      if (!serviceId) {
-        return null;
-      }
-
-      let service = null;
-
-      if (type === "PUJA") {
-        service = await prisma.pujaService.findUnique({
-          where: { id: serviceId },
-          select: {
-            name: true,
-          },
-        });
-      } else if (type === "SERVICE") {
-        // Change this model/field if your Prisma schema differs.
-        service = await prisma.service.findUnique({
-          where: { id: serviceId },
-          select: {
-            name: true,
-          },
-        });
-      }
-
-      return service?.name || null;
-    };
-
-    // Attach service name to each record
+    // 5. Resolve service names
     const data = await Promise.all(
-      paymentLogs.map(async (payment) => ({
-        ...payment,
-        serviceName: await getServiceName(
-          payment.serviceType,
-          payment.serviceId
-        ),
-      }))
+      paymentLogs.map(async (payment) => {
+        let serviceName = null;
+
+        try {
+          if (payment.serviceType === "PUJA") {
+            const pujaService = await prisma.pujaService.findUnique({
+              where: {
+                id: payment.serviceId,
+              },
+              select: {
+                name: true,
+              },
+            });
+
+            serviceName = pujaService?.name ?? null;
+          } else if (payment.serviceType === "SERVICE") {
+            const service = await prisma.service.findUnique({
+              where: {
+                id: payment.serviceId,
+              },
+              select: {
+                name: true,
+              },
+            });
+
+            serviceName = service?.name ?? null;
+          }
+        } catch (serviceError) {
+          // Keep the payment record even if the related service is unavailable.
+          console.error(
+            `Failed to fetch service name for serviceId ${payment.serviceId}:`,
+            serviceError.message
+          );
+        }
+
+        return {
+          id: payment.id,
+          userId: payment.userId,
+          serviceType: payment.serviceType,
+          serviceId: payment.serviceId,
+          bookingId: payment.bookingId,
+          invoiceNo: payment.invoiceNo,
+          taxableAmount: payment.taxableAmount,
+          totalTax: payment.totalTax,
+          createdAt: payment.createdAt.toISOString(),
+          amount: payment.amount,
+          serviceName,
+        };
+      })
     );
 
+    // 6. Calculate pagination details
+    const totalPages = Math.ceil(totalRecords / pageLimit);
+
+    // 7. Return response
     return {
       success: true,
       message: "Service payment logs fetched successfully",
       data,
       pagination: {
         totalRecords,
-        totalPages: Math.ceil(totalRecords / pageLimit),
+        totalPages,
         currentPage,
         limit: pageLimit,
       },
     };
   } catch (error) {
-    console.error("Error fetching service payment logs:", error);
-    throw error;
+    console.error("getServicesBankPaymentLogs error:", error);
+
+    throw new Error(error.message || "Failed to fetch service payment logs");
   }
 },
 

@@ -1616,7 +1616,7 @@ module.exports = gql`
     taxableAmount: Float
     totalTax: Float
 
-    createdAt: DateTime!
+    createdAt: String!
     amount: Float!
 
     serviceName: String
@@ -1750,8 +1750,8 @@ module.exports = gql`
       page: Int = 1
       limit: Int = 10
       serviceType: String
-      startDate: DateTime
-      endDate: DateTime
+      startDate: String
+      endDate: String
     ): GetServicesBankPaymentLogsResponse!
   }
 
