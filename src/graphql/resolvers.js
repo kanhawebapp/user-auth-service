@@ -3428,9 +3428,9 @@ getServicesBankPaymentLogs: async (
     startDate,
     endDate,
   },
-  context
+  {user}
 ) => {
-  const { prisma, user } = context;
+  
 
   try {
     // 1. Validate authentication
