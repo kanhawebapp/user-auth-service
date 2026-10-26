@@ -3113,52 +3113,61 @@ module.exports = {
       }
     },
 
-    getLiveGifts: async (_, __, { user }) => {
-      try {
-        console.log("========== getLiveGifts ==========");
-        console.log("Authenticated user:", user?.id);
+  
+getLiveGifts: async (_, __, { user }) => {
+  try {
+    console.log("========== getLiveGifts ==========");
+    console.log("Authenticated user:", user?.id);
 
-        // 1. Validate authentication.
-        if (!user) {
-          throw new Error("Unauthorized");
-        }
+    // 1. Validate authentication
+    if (!user) {
+      throw new Error("Unauthorized");
+    }
 
-        // 2. Use the shared Prisma client.
-        // Do not depend on context.prisma.
-        if (!prisma) {
-          throw new Error("Prisma client is not initialized");
-        }
+    // 2. Validate shared Prisma client
+    if (!prisma) {
+      throw new Error("Prisma client is not initialized");
+    }
 
-        if (!prisma.liveGift) {
-          throw new Error(
-            "Prisma liveGift model is missing. Run Prisma client generation.",
-          );
-        }
+    if (!prisma.gift) {
+      throw new Error(
+        "Prisma Gift model is missing. Run Prisma client generation."
+      );
+    }
 
-        // 3. Fetch active gifts.
-        const gifts = await prisma.liveGift.findMany({
-          where: {
-            isActive: true,
-          },
-          select: {
-            id: true,
-            name: true,
-            icon: true,
-            price: true,
-          },
-          orderBy: {
-            price: "asc",
-          },
-        });
+    // 3. Fetch active gifts from the existing Gift table
+    const gifts = await prisma.gift.findMany({
+      where: {
+        status: "active",
+      },
+      select: {
+        id: true,
+        name: true,
+        amount: true,
+        image: true,
+      },
+      orderBy: {
+        amount: "asc",
+      },
+    });
 
-        console.log("Active gifts found:", gifts.length);
+    console.log("Active gifts found:", gifts.length);
 
-        return gifts;
-      } catch (error) {
-        console.error("getLiveGifts failed:", error.message);
-        throw error;
-      }
-    },
+    // 4. Map existing Gift fields to the live-gift response
+    return gifts.map((gift) => ({
+      id: gift.id,
+      name: gift.name,
+      price: Number(gift.amount),
+      image: gift.image,
+      icon: gift.image,
+      isActive: gift.status === "active",
+    }));
+  } catch (error) {
+    console.error("getLiveGifts failed:", error.message);
+    throw error;
+  }
+},
+
 
     getCoupons: async (_, __, context) => {
       try {

@@ -1455,11 +1455,13 @@ module.exports = gql`
   }
   #-------------------live gift----------
   type LiveGift {
-    id: ID!
-    name: String!
-    icon: String!
-    price: Int!
-  }
+  id: ID!
+  name: String!
+  price: Float!
+  image: String
+  icon: String
+  isActive: Boolean!
+}
 
   type LeaveLiveResponse {
     success: Boolean!
