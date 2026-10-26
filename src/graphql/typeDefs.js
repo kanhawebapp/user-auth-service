@@ -1744,6 +1744,74 @@ type RechargePaymentLogsResponse {
   data: [RechargePaymentLog!]!
   pagination: RechargePaymentPagination!
 }
+#----------------START INVOICE RECHARGE----------
+
+type RechargeInvoice {
+  id: ID!
+  invoiceNo: String!
+  transactionId: String!
+  paymentOrderId: String
+  razorpayOrderId: String
+  razorpayPaymentId: String
+
+  # Recharge details
+  rechargePackId: String
+  rechargePackName: String
+  rechargePackDescription: String
+  coins: Int
+
+  # Invoice amounts
+  amount: Float
+  taxableAmount: Float
+  discount: Float
+
+  # GST details
+  gstRate: Float
+  sgstRate: Float
+  cgstRate: Float
+  igstRate: Float
+
+  sgst: Float
+  cgst: Float
+  igst: Float
+  totalTax: Float
+  totalAmount: Float
+
+  # Payment gateway charges
+  pgChargeRate: Float
+  pgCharge: Float
+  pgIgst: Float
+  pgTotal: Float
+  amountReceived: Float
+  amountInWords: String
+
+  # Customer details
+  userName: String
+  city: String
+  state: String
+  country: String
+  placeOfSupply: String
+  pincode: String
+  recipientGSTIN: String
+
+  # Supplier details
+  supplierGSTIN: String
+  supplierAddress: String
+  website: String
+  email: String
+  hsnSac: String
+  reverseCharge: Boolean
+  panNumber: String
+  transactionHistoryUrl: String
+
+  # Payment details
+  provider: String
+  status: String
+  platform: String
+  createdAt: String
+}
+
+
 
 
 
@@ -1875,6 +1943,8 @@ type RechargePaymentLogsResponse {
     endDate: String
     status: String
   ): RechargePaymentLogsResponse!
+
+  getRechargeInvoice(transactionId: ID!): RechargeInvoice
   }
 
   type Mutation {

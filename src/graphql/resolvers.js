@@ -3967,6 +3967,223 @@ getServicesInvoice: async (_, { transactionId }) => {
   }
 },
 
+getRechargeInvoice: async (_, { transactionId }) => {
+  try {
+    // 1. Find the recharge payment transaction
+    const transaction = await prisma.payment.findFirst({
+      where: {
+        id: transactionId,
+      },
+      include: {
+        user: true,
+      },
+    });
+
+    if (!transaction) {
+      throw new Error("Recharge payment transaction not found");
+    }
+
+    // 2. Validate payment status
+    if (transaction.status !== "SUCCESS") {
+      throw new Error(
+        "Invoice is available only for successful payments"
+      );
+    }
+
+    // 3. Fetch recharge pack details
+    let rechargePackName = "-";
+    let rechargePackDescription = "-";
+
+    if (transaction.rechargePackId) {
+      const rechargePack = await prisma.rechargePack.findUnique({
+        where: {
+          id: transaction.rechargePackId,
+        },
+        select: {
+          name: true,
+          description: true,
+        },
+      });
+
+      rechargePackName = rechargePack?.name || "-";
+      rechargePackDescription = rechargePack?.description || "-";
+    }
+
+    // 4. Calculate invoice amounts
+    const totalAmount = Number(
+      transaction.totalAmount ??
+      transaction.amount ??
+      0
+    );
+
+    const gstRate = Number(transaction.gstRate ?? 18);
+
+    // Prefer the stored taxable amount
+    const taxableAmount =
+      transaction.taxableAmount != null
+        ? Number(transaction.taxableAmount)
+        : totalAmount / (1 + gstRate / 100);
+
+    const sgst = Number(transaction.sgst ?? 0);
+    const cgst = Number(transaction.cgst ?? 0);
+    const igst = Number(transaction.igst ?? 0);
+
+    const totalTax =
+      transaction.totalTax != null
+        ? Number(transaction.totalTax)
+        : sgst + cgst + igst || totalAmount - taxableAmount;
+
+    // 5. Calculate GST rates
+    const sgstRate =
+      igst === 0 ? gstRate / 2 : 0;
+
+    const cgstRate =
+      igst === 0 ? gstRate / 2 : 0;
+
+    const igstRate =
+      igst > 0 ? gstRate : 0;
+
+    // 6. Payment gateway charges
+    const pgChargeRate = Number(
+      transaction.pgChargeRate ?? 0
+    );
+
+    const pgCharge = Number(
+      transaction.pgCharge ?? 0
+    );
+
+    const pgIgst = Number(
+      transaction.pgIgst ?? 0
+    );
+
+    const pgTotal = Number(
+      transaction.pgTotal ?? pgCharge + pgIgst
+    );
+
+    const receivableAmount = Number(
+      transaction.receivableAmount ?? totalAmount
+    );
+
+    // 7. Return recharge invoice details
+    return {
+      id: transaction.id,
+
+      invoiceNo:
+        transaction.invoiceNo ||
+        `INV-${transaction.id.slice(0, 8)}`,
+
+      transactionId:
+        transaction.razorpayPaymentId ||
+        transaction.id,
+
+      paymentOrderId:
+        transaction.paymentOrderId || null,
+
+      razorpayOrderId:
+        transaction.razorpayOrderId || null,
+
+      razorpayPaymentId:
+        transaction.razorpayPaymentId || null,
+
+      // Recharge details
+      rechargePackId:
+        transaction.rechargePackId || null,
+
+      rechargePackName,
+
+      rechargePackDescription,
+
+      coins: Number(transaction.coins ?? 0),
+
+      // Invoice amounts
+      amount: taxableAmount,
+
+      taxableAmount,
+
+      discount: 0,
+
+      gstRate,
+
+      sgstRate,
+      cgstRate,
+      igstRate,
+
+      sgst,
+      cgst,
+      igst,
+
+      totalTax,
+
+      totalAmount,
+
+      // Payment gateway charges
+      pgChargeRate,
+      pgCharge,
+      pgIgst,
+      pgTotal,
+
+      // Amount after payment gateway charges
+      amountReceived: receivableAmount,
+
+      amountInWords: this.amountInWords
+        ? this.amountInWords(totalAmount)
+        : null,
+
+      // Customer details
+      userName: transaction.user?.name || "-",
+
+      city: transaction.city || "-",
+
+      state: transaction.state || "-",
+
+      country:
+        transaction.country ||
+        transaction.user?.country ||
+        "India",
+
+      placeOfSupply: transaction.state || "-",
+
+      pincode: transaction.pincode || "-",
+
+      recipientGSTIN: "-",
+
+      // Supplier details
+      supplierGSTIN: "07ABBFM1961C1ZN",
+
+      supplierAddress:
+        "2ND FLOOR, 1511/2B, Kotla Mubarakpur, Bhishma Pitamah Marg, Wazir Nagar, New Delhi, South East Delhi, Delhi, 110003",
+
+      website: "www.dhwaniastro.com",
+
+      email: "support@dhwaniastro.com",
+
+      hsnSac: "999799",
+
+      reverseCharge: false,
+
+      panNumber: "ABBFM1961C",
+
+      transactionHistoryUrl: "-",
+
+      // Payment details
+      provider: transaction.provider || "-",
+
+      status: transaction.status,
+
+      platform: transaction.platform || "-",
+
+      createdAt: transaction.createdAt,
+    };
+  } catch (error) {
+    console.error("getRechargeInvoice error:", error);
+
+    throw new Error(
+      error.message || "Failed to fetch recharge invoice"
+    );
+  }
+},
+
+
 
 
   },
