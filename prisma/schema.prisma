@@ -1612,17 +1612,7 @@ enum LiveStatus {
   ENDED
 }
 
-model LiveGift {
-  id        String   @id @default(uuid())
-  name      String
-  icon      String
-  price     Int
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
 
-  transactions LiveGiftTransaction[]
-}
 
 model LiveGiftTransaction {
   id           String   @id @default(uuid())
