@@ -1690,6 +1690,64 @@ module.exports = gql`
   createdAt: String
 }
 
+#------start recharge payment Logs------
+type RechargePaymentLog {
+  id: ID!
+  userId: String!
+  rechargePackId: String
+  paymentOrderId: String
+
+  rechargePackName: String
+  rechargePackDescription: String
+
+  amount: Float
+  coins: Int
+
+  provider: String
+  razorpayOrderId: String
+  razorpayPaymentId: String
+  status: String
+
+  invoiceNo: String
+  taxableAmount: Float
+  gstRate: Float
+  cgst: Float
+  sgst: Float
+  igst: Float
+  totalTax: Float
+  totalAmount: Float
+
+  pgChargeRate: Float
+  pgCharge: Float
+  pgIgst: Float
+  pgTotal: Float
+  receivableAmount: Float
+
+  country: String
+  state: String
+  city: String
+  platform: String
+
+  createdAt: String
+}
+
+type RechargePaymentPagination {
+  totalRecords: Int!
+  totalPages: Int!
+  currentPage: Int!
+  limit: Int!
+}
+
+type RechargePaymentLogsResponse {
+  success: Boolean!
+  message: String!
+  data: [RechargePaymentLog!]!
+  pagination: RechargePaymentPagination!
+}
+
+
+
+
   type Query {
     # puja services
     pujaServices: [PujaService!]!
@@ -1809,6 +1867,14 @@ module.exports = gql`
     ): GetServicesBankPaymentLogsResponse!
 
     getServicesInvoice(transactionId: ID!): ServicesInvoice!
+
+    getRechargePaymentLogs(
+    page: Int
+    limit: Int
+    startDate: String
+    endDate: String
+    status: String
+  ): RechargePaymentLogsResponse!
   }
 
   type Mutation {

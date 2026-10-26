@@ -3593,6 +3593,207 @@ getServicesBankPaymentLogs: async (
     throw new Error(error.message || "Failed to fetch service payment logs");
   }
 },
+getRechargePaymentLogs: async (
+  _,
+  {
+    page = 1,
+    limit = 10,
+    startDate,
+    endDate,
+    status,
+  },
+  { user }
+) => {
+  try {
+    // 1. Validate authentication
+    if (!user?.id) {
+      throw new Error("Unauthorized: Please login to continue");
+    }
+
+    // 2. Validate pagination
+    const currentPage = Math.max(1, Number(page) || 1);
+    const pageLimit = Math.max(1, Math.min(100, Number(limit) || 10));
+    const skip = (currentPage - 1) * pageLimit;
+
+    // 3. Build filters
+    const where = {
+      userId: user.id,
+    };
+
+    // Optional payment status filter
+    if (status) {
+      const normalizedStatus = status.toUpperCase();
+
+      const allowedStatuses = [
+        "CREATED",
+        "PENDING",
+        "SUCCESS",
+        "FAILED",
+        "CANCELLED",
+      ];
+
+      if (!allowedStatuses.includes(normalizedStatus)) {
+        throw new Error(
+          `Invalid status. Allowed values are: ${allowedStatuses.join(", ")}`
+        );
+      }
+
+      where.status = normalizedStatus;
+    }
+
+    // 4. Validate and apply startDate
+    if (startDate) {
+      const parsedStartDate = new Date(startDate);
+
+      if (Number.isNaN(parsedStartDate.getTime())) {
+        throw new Error("Invalid startDate. Please provide a valid date.");
+      }
+
+      where.createdAt = {
+        ...where.createdAt,
+        gte: parsedStartDate,
+      };
+    }
+
+    // 5. Validate and apply endDate
+    if (endDate) {
+      const parsedEndDate = new Date(endDate);
+
+      if (Number.isNaN(parsedEndDate.getTime())) {
+        throw new Error("Invalid endDate. Please provide a valid date.");
+      }
+
+      // Include the entire day when endDate is YYYY-MM-DD.
+      if (/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+        parsedEndDate.setHours(23, 59, 59, 999);
+      }
+
+      where.createdAt = {
+        ...where.createdAt,
+        lte: parsedEndDate,
+      };
+    }
+
+    // 6. Validate date range
+    if (
+      where.createdAt?.gte &&
+      where.createdAt?.lte &&
+      where.createdAt.gte > where.createdAt.lte
+    ) {
+      throw new Error("startDate cannot be later than endDate.");
+    }
+
+    // 7. Fetch payment logs and total count
+    const [paymentLogs, totalRecords] = await Promise.all([
+      prisma.payment.findMany({
+        where,
+        orderBy: {
+          createdAt: "desc",
+        },
+        skip,
+        take: pageLimit,
+      }),
+
+      prisma.payment.count({
+        where,
+      }),
+    ]);
+
+    // 8. Fetch recharge pack names
+    const data = await Promise.all(
+      paymentLogs.map(async (payment) => {
+        let rechargePackName = null;
+        let rechargePackDescription = null;
+
+        try {
+          if (payment.rechargePackId) {
+            const rechargePack = await prisma.rechargePack.findUnique({
+              where: {
+                id: payment.rechargePackId,
+              },
+              select: {
+                name: true,
+                description: true,
+              },
+            });
+
+            rechargePackName = rechargePack?.name ?? null;
+            rechargePackDescription = rechargePack?.description ?? null;
+          }
+        } catch (rechargePackError) {
+          // Return the payment even if its recharge pack no longer exists.
+          console.error(
+            `Failed to fetch recharge pack ${payment.rechargePackId}:`,
+            rechargePackError.message
+          );
+        }
+
+        return {
+          id: payment.id,
+          userId: payment.userId,
+          rechargePackId: payment.rechargePackId,
+          paymentOrderId: payment.paymentOrderId,
+
+          rechargePackName,
+          rechargePackDescription,
+
+          amount: payment.amount,
+          coins: payment.coins,
+
+          provider: payment.provider,
+          razorpayOrderId: payment.razorpayOrderId,
+          razorpayPaymentId: payment.razorpayPaymentId,
+          status: payment.status,
+
+          invoiceNo: payment.invoiceNo,
+          taxableAmount: payment.taxableAmount,
+          gstRate: payment.gstRate,
+          cgst: payment.cgst,
+          sgst: payment.sgst,
+          igst: payment.igst,
+          totalTax: payment.totalTax,
+          totalAmount: payment.totalAmount,
+
+          pgChargeRate: payment.pgChargeRate,
+          pgCharge: payment.pgCharge,
+          pgIgst: payment.pgIgst,
+          pgTotal: payment.pgTotal,
+          receivableAmount: payment.receivableAmount,
+
+          country: payment.country,
+          state: payment.state,
+          city: payment.city,
+          platform: payment.platform,
+
+          createdAt: payment.createdAt?.toISOString() ?? null,
+        };
+      })
+    );
+
+    // 9. Calculate pagination
+    const totalPages = Math.ceil(totalRecords / pageLimit);
+
+    // 10. Return response
+    return {
+      success: true,
+      message: "Recharge payment logs fetched successfully",
+      data,
+      pagination: {
+        totalRecords,
+        totalPages,
+        currentPage,
+        limit: pageLimit,
+      },
+    };
+  } catch (error) {
+    console.error("getRechargePaymentLogs error:", error);
+
+    throw new Error(
+      error.message || "Failed to fetch recharge payment logs"
+    );
+  }
+},
+
 
 
 getServicesInvoice: async (_, { transactionId }) => {
