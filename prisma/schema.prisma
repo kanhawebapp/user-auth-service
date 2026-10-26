@@ -617,6 +617,7 @@ model Gift {
   image         String?
   status        String        @default("active")
   giftHistories GiftHistory[]
+  liveGiftTransactions LiveGiftTransaction[]
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 }
@@ -1635,8 +1636,8 @@ model LiveGiftTransaction {
 
   status    String   @default("SUCCESS")
   createdAt DateTime @default(now())
-
-  gift LiveGift @relation(fields: [giftId], references: [id])
+  
+  gift   Gift   @relation(fields: [giftId], references: [id])
 
   @@index([streamId, createdAt])
   @@index([senderId, createdAt])
