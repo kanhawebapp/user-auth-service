@@ -3804,6 +3804,147 @@ getRechargePaymentLogs: async (
 },
 
 
+getMyBookedPujaService: async (
+  _,
+  {
+    page = 1,
+    limit = 10,
+    paymentStatus,
+    bookingStatus,
+    startDate,
+    endDate,
+  },
+  { user }
+) => {
+  try {
+    // Authentication
+    if (!user?.id) {
+      throw new Error("Unauthorized: Please login to continue");
+    }
+
+    const currentPage = Math.max(1, Number(page) || 1);
+    const pageLimit = Math.max(1, Math.min(100, Number(limit) || 10));
+    const skip = (currentPage - 1) * pageLimit;
+
+    // Always restrict bookings to the authenticated user
+    const where = {
+      userId: user.id,
+    };
+
+    // Optional status filters
+    if (paymentStatus) {
+      where.paymentStatus = paymentStatus;
+    }
+
+    if (bookingStatus) {
+      where.bookingStatus = bookingStatus;
+    }
+
+    // Date filters: filter using booking creation date
+    if (startDate || endDate) {
+      where.createdAt = {};
+
+      if (startDate) {
+        const start = new Date(startDate);
+
+        if (Number.isNaN(start.getTime())) {
+          throw new Error("Invalid startDate");
+        }
+
+        start.setHours(0, 0, 0, 0);
+        where.createdAt.gte = start;
+      }
+
+      if (endDate) {
+        const end = new Date(endDate);
+
+        if (Number.isNaN(end.getTime())) {
+          throw new Error("Invalid endDate");
+        }
+
+        // Include the entire end date
+        end.setHours(23, 59, 59, 999);
+        where.createdAt.lte = end;
+      }
+
+      if (
+        startDate &&
+        endDate &&
+        new Date(startDate) > new Date(endDate)
+      ) {
+        throw new Error("startDate cannot be after endDate");
+      }
+    }
+
+    const [bookings, total] = await Promise.all([
+      prisma.pujaBooking.findMany({
+        where,
+        skip,
+        take: pageLimit,
+        orderBy: {
+          createdAt: "desc",
+        },
+        select: {
+          id: true,
+          userId: true,
+          pujaId: true,
+          mantraOptionId: true,
+          mantraOptionName: true,
+          quantity: true,
+          unitPrice: true,
+          totalAmount: true,
+          paymentStatus: true,
+          bookingStatus: true,
+          createdAt: true,
+          puja: {
+            select: {
+              title: true,
+            },
+          },
+        },
+      }),
+
+      prisma.pujaBooking.count({
+        where,
+      }),
+    ]);
+
+    const data = bookings.map((booking) => ({
+      id: booking.id,
+      userId: booking.userId,
+      pujaId: booking.pujaId,
+      pujaName: booking.puja?.title ?? null,
+      mantraOptionId: booking.mantraOptionId,
+      mantraOptionName: booking.mantraOptionName,
+      quantity: booking.quantity,
+      unitPrice: Number(booking.unitPrice),
+      totalAmount: Number(booking.totalAmount),
+      paymentStatus: booking.paymentStatus,
+      bookingStatus: booking.bookingStatus,
+      bookingDate: booking.createdAt
+        ? booking.createdAt.toISOString()
+        : null,
+    }));
+
+    return {
+      success: true,
+      message: "Your puja bookings fetched successfully",
+      total,
+      currentPage,
+      totalPages: Math.ceil(total / pageLimit),
+      limit: pageLimit,
+      data,
+    };
+  } catch (error) {
+    console.error("getMyBookedPujaService error:", error);
+    throw new Error(
+      error.message || "Failed to fetch your puja bookings"
+    );
+  }
+},
+
+
+
 
 getServicesInvoice: async (_, { transactionId }) => {
   try {

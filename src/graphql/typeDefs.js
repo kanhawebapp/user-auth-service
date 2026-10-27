@@ -1814,7 +1814,31 @@ type RechargeInvoice {
 }
 
 
+#-------------START FOR PUJA-------
+type MyBookedPujaService {
+  id: ID!
+  userId: String!
+  pujaId: String!
+  pujaName: String
+  mantraOptionId: String
+  mantraOptionName: String
+  quantity: Int!
+  unitPrice: Float!
+  totalAmount: Float!
+  paymentStatus: String
+  bookingStatus: String
+  bookingDate: String
+}
 
+type MyBookedPujaServiceResponse {
+  success: Boolean!
+  message: String
+  total: Int!
+  currentPage: Int!
+  totalPages: Int!
+  limit: Int!
+  data: [MyBookedPujaService!]!
+}
 
 
 
@@ -1947,6 +1971,15 @@ type RechargeInvoice {
   ): RechargePaymentLogsResponse!
 
   getRechargeInvoice(transactionId: ID!): RechargeInvoice
+
+   getMyBookedPujaService(
+    page: Int
+    limit: Int
+    paymentStatus: String
+    bookingStatus: String
+    startDate: String
+    endDate: String
+  ): MyBookedPujaServiceResponse!
   }
 
   type Mutation {
