@@ -3113,61 +3113,59 @@ module.exports = {
       }
     },
 
-  
-getLiveGifts: async (_, __, { user }) => {
-  try {
-    console.log("========== getLiveGifts ==========");
-    console.log("Authenticated user:", user?.id);
+    getLiveGifts: async (_, __, { user }) => {
+      try {
+        console.log("========== getLiveGifts ==========");
+        console.log("Authenticated user:", user?.id);
 
-    // 1. Validate authentication
-    if (!user) {
-      throw new Error("Unauthorized");
-    }
+        // 1. Validate authentication
+        if (!user) {
+          throw new Error("Unauthorized");
+        }
 
-    // 2. Validate shared Prisma client
-    if (!prisma) {
-      throw new Error("Prisma client is not initialized");
-    }
+        // 2. Validate shared Prisma client
+        if (!prisma) {
+          throw new Error("Prisma client is not initialized");
+        }
 
-    if (!prisma.gift) {
-      throw new Error(
-        "Prisma Gift model is missing. Run Prisma client generation."
-      );
-    }
+        if (!prisma.gift) {
+          throw new Error(
+            "Prisma Gift model is missing. Run Prisma client generation.",
+          );
+        }
 
-    // 3. Fetch active gifts from the existing Gift table
-    const gifts = await prisma.gift.findMany({
-      where: {
-        status: "active",
-      },
-      select: {
-        id: true,
-        name: true,
-        amount: true,
-        image: true,
-      },
-      orderBy: {
-        amount: "asc",
-      },
-    });
+        // 3. Fetch active gifts from the existing Gift table
+        const gifts = await prisma.gift.findMany({
+          where: {
+            status: "active",
+          },
+          select: {
+            id: true,
+            name: true,
+            amount: true,
+            image: true,
+          },
+          orderBy: {
+            amount: "asc",
+          },
+        });
 
-    console.log("Active gifts found:", gifts.length);
+        console.log("Active gifts found:", gifts.length);
 
-    // 4. Map existing Gift fields to the live-gift response
-    return gifts.map((gift) => ({
-      id: gift.id,
-      name: gift.name,
-      price: Number(gift.amount),
-      image: gift.image,
-      icon: gift.image,
-      isActive: gift.status === "active",
-    }));
-  } catch (error) {
-    console.error("getLiveGifts failed:", error.message);
-    throw error;
-  }
-},
-
+        // 4. Map existing Gift fields to the live-gift response
+        return gifts.map((gift) => ({
+          id: gift.id,
+          name: gift.name,
+          price: Number(gift.amount),
+          image: gift.image,
+          icon: gift.image,
+          isActive: gift.status === "active",
+        }));
+      } catch (error) {
+        console.error("getLiveGifts failed:", error.message);
+        throw error;
+      }
+    },
 
     getCoupons: async (_, __, context) => {
       try {
@@ -3426,916 +3424,852 @@ getLiveGifts: async (_, __, { user }) => {
       }
       return paymentOrder;
     },
-    
 
-getServicesBankPaymentLogs: async (
-  _,
-  {
-    page = 1,
-    limit = 10,
-    serviceType,
-    startDate,
-    endDate,
-  },
-  {user}
-) => {
-  
+    getServicesBankPaymentLogs: async (
+      _,
+      { page = 1, limit = 10, serviceType, startDate, endDate },
+      { user },
+    ) => {
+      try {
+        // 1. Validate authentication
+        if (!user?.id) {
+          throw new Error("Unauthorized: Please login to continue");
+        }
 
-  try {
-    // 1. Validate authentication
-    if (!user?.id) {
-      throw new Error("Unauthorized: Please login to continue");
-    }
+        // 2. Validate pagination
+        const currentPage = Math.max(1, Number(page) || 1);
+        const pageLimit = Math.max(1, Math.min(100, Number(limit) || 10));
+        const skip = (currentPage - 1) * pageLimit;
 
-    // 2. Validate pagination
-    const currentPage = Math.max(1, Number(page) || 1);
-    const pageLimit = Math.max(1, Math.min(100, Number(limit) || 10));
-    const skip = (currentPage - 1) * pageLimit;
+        // 3. Build filters
+        const where = {
+          userId: user.id,
+        };
 
-    // 3. Build filters
-    const where = {
-      userId: user.id,
-    };
+        // Optional service type filter
+        if (serviceType) {
+          const normalizedServiceType = serviceType.toUpperCase();
 
-    // Optional service type filter
-    if (serviceType) {
-      const normalizedServiceType = serviceType.toUpperCase();
+          if (!["SERVICE", "PUJA"].includes(normalizedServiceType)) {
+            throw new Error(
+              "Invalid serviceType. Allowed values are SERVICE and PUJA.",
+            );
+          }
 
-      if (!["SERVICE", "PUJA"].includes(normalizedServiceType)) {
+          where.serviceType = normalizedServiceType;
+        }
+
+        // Optional start date filter
+        if (startDate) {
+          const parsedStartDate = new Date(startDate);
+
+          if (Number.isNaN(parsedStartDate.getTime())) {
+            throw new Error("Invalid startDate. Please provide a valid date.");
+          }
+
+          where.createdAt = {
+            ...where.createdAt,
+            gte: parsedStartDate,
+          };
+        }
+
+        // Optional end date filter
+        if (endDate) {
+          const parsedEndDate = new Date(endDate);
+
+          if (Number.isNaN(parsedEndDate.getTime())) {
+            throw new Error("Invalid endDate. Please provide a valid date.");
+          }
+
+          // If endDate is date-only (YYYY-MM-DD), include the entire day.
+          if (/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+            parsedEndDate.setUTCHours(23, 59, 59, 999);
+          }
+
+          where.createdAt = {
+            ...where.createdAt,
+            lte: parsedEndDate,
+          };
+        }
+
+        // Validate date range
+        if (
+          where.createdAt?.gte &&
+          where.createdAt?.lte &&
+          where.createdAt.gte > where.createdAt.lte
+        ) {
+          throw new Error("startDate cannot be later than endDate.");
+        }
+
+        // 4. Fetch payment logs and total count
+        const [paymentLogs, totalRecords] = await Promise.all([
+          prisma.servicesBankPaymentLog.findMany({
+            where,
+            orderBy: {
+              createdAt: "desc",
+            },
+            skip,
+            take: pageLimit,
+          }),
+
+          prisma.servicesBankPaymentLog.count({
+            where,
+          }),
+        ]);
+
+        // 5. Resolve service names
+        const data = await Promise.all(
+          paymentLogs.map(async (payment) => {
+            let serviceName = null;
+
+            try {
+              if (payment.serviceType === "PUJA") {
+                const pujaService = await prisma.pujaService.findUnique({
+                  where: {
+                    id: payment.serviceId,
+                  },
+                  select: {
+                    name: true,
+                  },
+                });
+
+                serviceName = pujaService?.name ?? null;
+              } else if (payment.serviceType === "SERVICE") {
+                const service = await prisma.service.findUnique({
+                  where: {
+                    id: payment.serviceId,
+                  },
+                  select: {
+                    name: true,
+                  },
+                });
+
+                serviceName = service?.name ?? null;
+              }
+            } catch (serviceError) {
+              // Keep the payment record even if the related service is unavailable.
+              console.error(
+                `Failed to fetch service name for serviceId ${payment.serviceId}:`,
+                serviceError.message,
+              );
+            }
+
+            return {
+              id: payment.id,
+              userId: payment.userId,
+              serviceType: payment.serviceType,
+              serviceId: payment.serviceId,
+              bookingId: payment.bookingId,
+              invoiceNo: payment.invoiceNo,
+              taxableAmount: payment.taxableAmount,
+              totalTax: payment.totalTax,
+              createdAt: payment.createdAt.toISOString(),
+              amount: payment.amount,
+              serviceName,
+            };
+          }),
+        );
+
+        // 6. Calculate pagination details
+        const totalPages = Math.ceil(totalRecords / pageLimit);
+
+        // 7. Return response
+        return {
+          success: true,
+          message: "Service payment logs fetched successfully",
+          data,
+          pagination: {
+            totalRecords,
+            totalPages,
+            currentPage,
+            limit: pageLimit,
+          },
+        };
+      } catch (error) {
+        console.error("getServicesBankPaymentLogs error:", error);
+
         throw new Error(
-          "Invalid serviceType. Allowed values are SERVICE and PUJA."
+          error.message || "Failed to fetch service payment logs",
         );
       }
-
-      where.serviceType = normalizedServiceType;
-    }
-
-    // Optional start date filter
-    if (startDate) {
-      const parsedStartDate = new Date(startDate);
-
-      if (Number.isNaN(parsedStartDate.getTime())) {
-        throw new Error("Invalid startDate. Please provide a valid date.");
-      }
-
-      where.createdAt = {
-        ...where.createdAt,
-        gte: parsedStartDate,
-      };
-    }
-
-    // Optional end date filter
-    if (endDate) {
-      const parsedEndDate = new Date(endDate);
-
-      if (Number.isNaN(parsedEndDate.getTime())) {
-        throw new Error("Invalid endDate. Please provide a valid date.");
-      }
-
-      // If endDate is date-only (YYYY-MM-DD), include the entire day.
-      if (/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
-        parsedEndDate.setUTCHours(23, 59, 59, 999);
-      }
-
-      where.createdAt = {
-        ...where.createdAt,
-        lte: parsedEndDate,
-      };
-    }
-
-    // Validate date range
-    if (
-      where.createdAt?.gte &&
-      where.createdAt?.lte &&
-      where.createdAt.gte > where.createdAt.lte
-    ) {
-      throw new Error("startDate cannot be later than endDate.");
-    }
-
-    // 4. Fetch payment logs and total count
-    const [paymentLogs, totalRecords] = await Promise.all([
-      prisma.servicesBankPaymentLog.findMany({
-        where,
-        orderBy: {
-          createdAt: "desc",
-        },
-        skip,
-        take: pageLimit,
-      }),
-
-      prisma.servicesBankPaymentLog.count({
-        where,
-      }),
-    ]);
-
-    // 5. Resolve service names
-    const data = await Promise.all(
-      paymentLogs.map(async (payment) => {
-        let serviceName = null;
-
-        try {
-          if (payment.serviceType === "PUJA") {
-            const pujaService = await prisma.pujaService.findUnique({
-              where: {
-                id: payment.serviceId,
-              },
-              select: {
-                name: true,
-              },
-            });
-
-            serviceName = pujaService?.name ?? null;
-          } else if (payment.serviceType === "SERVICE") {
-            const service = await prisma.service.findUnique({
-              where: {
-                id: payment.serviceId,
-              },
-              select: {
-                name: true,
-              },
-            });
-
-            serviceName = service?.name ?? null;
-          }
-        } catch (serviceError) {
-          // Keep the payment record even if the related service is unavailable.
-          console.error(
-            `Failed to fetch service name for serviceId ${payment.serviceId}:`,
-            serviceError.message
-          );
+    },
+    getRechargePaymentLogs: async (
+      _,
+      { page = 1, limit = 10, startDate, endDate, status },
+      { user },
+    ) => {
+      try {
+        // 1. Validate authentication
+        if (!user?.id) {
+          throw new Error("Unauthorized: Please login to continue");
         }
 
-        return {
-          id: payment.id,
-          userId: payment.userId,
-          serviceType: payment.serviceType,
-          serviceId: payment.serviceId,
-          bookingId: payment.bookingId,
-          invoiceNo: payment.invoiceNo,
-          taxableAmount: payment.taxableAmount,
-          totalTax: payment.totalTax,
-          createdAt: payment.createdAt.toISOString(),
-          amount: payment.amount,
-          serviceName,
+        // 2. Validate pagination
+        const currentPage = Math.max(1, Number(page) || 1);
+        const pageLimit = Math.max(1, Math.min(100, Number(limit) || 10));
+        const skip = (currentPage - 1) * pageLimit;
+
+        // 3. Build filters
+        const where = {
+          userId: user.id,
         };
-      })
-    );
 
-    // 6. Calculate pagination details
-    const totalPages = Math.ceil(totalRecords / pageLimit);
+        // Optional payment status filter
+        if (status) {
+          const normalizedStatus = status.toUpperCase();
 
-    // 7. Return response
-    return {
-      success: true,
-      message: "Service payment logs fetched successfully",
-      data,
-      pagination: {
-        totalRecords,
-        totalPages,
-        currentPage,
-        limit: pageLimit,
-      },
-    };
-  } catch (error) {
-    console.error("getServicesBankPaymentLogs error:", error);
+          const allowedStatuses = [
+            "CREATED",
+            "PENDING",
+            "SUCCESS",
+            "FAILED",
+            "CANCELLED",
+          ];
 
-    throw new Error(error.message || "Failed to fetch service payment logs");
-  }
-},
-getRechargePaymentLogs: async (
-  _,
-  {
-    page = 1,
-    limit = 10,
-    startDate,
-    endDate,
-    status,
-  },
-  { user }
-) => {
-  try {
-    // 1. Validate authentication
-    if (!user?.id) {
-      throw new Error("Unauthorized: Please login to continue");
-    }
+          if (!allowedStatuses.includes(normalizedStatus)) {
+            throw new Error(
+              `Invalid status. Allowed values are: ${allowedStatuses.join(", ")}`,
+            );
+          }
 
-    // 2. Validate pagination
-    const currentPage = Math.max(1, Number(page) || 1);
-    const pageLimit = Math.max(1, Math.min(100, Number(limit) || 10));
-    const skip = (currentPage - 1) * pageLimit;
+          where.status = normalizedStatus;
+        }
 
-    // 3. Build filters
-    const where = {
-      userId: user.id,
-    };
+        // 4. Validate and apply startDate
+        if (startDate) {
+          const parsedStartDate = new Date(startDate);
 
-    // Optional payment status filter
-    if (status) {
-      const normalizedStatus = status.toUpperCase();
+          if (Number.isNaN(parsedStartDate.getTime())) {
+            throw new Error("Invalid startDate. Please provide a valid date.");
+          }
 
-      const allowedStatuses = [
-        "CREATED",
-        "PENDING",
-        "SUCCESS",
-        "FAILED",
-        "CANCELLED",
-      ];
+          where.createdAt = {
+            ...where.createdAt,
+            gte: parsedStartDate,
+          };
+        }
 
-      if (!allowedStatuses.includes(normalizedStatus)) {
+        // 5. Validate and apply endDate
+        if (endDate) {
+          const parsedEndDate = new Date(endDate);
+
+          if (Number.isNaN(parsedEndDate.getTime())) {
+            throw new Error("Invalid endDate. Please provide a valid date.");
+          }
+
+          // Include the entire day when endDate is YYYY-MM-DD.
+          if (/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+            parsedEndDate.setHours(23, 59, 59, 999);
+          }
+
+          where.createdAt = {
+            ...where.createdAt,
+            lte: parsedEndDate,
+          };
+        }
+
+        // 6. Validate date range
+        if (
+          where.createdAt?.gte &&
+          where.createdAt?.lte &&
+          where.createdAt.gte > where.createdAt.lte
+        ) {
+          throw new Error("startDate cannot be later than endDate.");
+        }
+
+        // 7. Fetch payment logs and total count
+        const [paymentLogs, totalRecords] = await Promise.all([
+          prisma.payment.findMany({
+            where,
+            orderBy: {
+              createdAt: "desc",
+            },
+            skip,
+            take: pageLimit,
+          }),
+
+          prisma.payment.count({
+            where,
+          }),
+        ]);
+
+        // 8. Fetch recharge pack names
+        const data = await Promise.all(
+          paymentLogs.map(async (payment) => {
+            let rechargePackName = null;
+            let rechargePackDescription = null;
+
+            try {
+              if (payment.rechargePackId) {
+                const rechargePack = await prisma.rechargePack.findUnique({
+                  where: {
+                    id: payment.rechargePackId,
+                  },
+                  select: {
+                    name: true,
+                    description: true,
+                  },
+                });
+
+                rechargePackName = rechargePack?.name ?? null;
+                rechargePackDescription = rechargePack?.description ?? null;
+              }
+            } catch (rechargePackError) {
+              // Return the payment even if its recharge pack no longer exists.
+              console.error(
+                `Failed to fetch recharge pack ${payment.rechargePackId}:`,
+                rechargePackError.message,
+              );
+            }
+
+            return {
+              id: payment.id,
+              userId: payment.userId,
+              rechargePackId: payment.rechargePackId,
+              paymentOrderId: payment.paymentOrderId,
+
+              rechargePackName,
+              rechargePackDescription,
+
+              amount: payment.amount,
+              coins: payment.coins,
+
+              provider: payment.provider,
+              razorpayOrderId: payment.razorpayOrderId,
+              razorpayPaymentId: payment.razorpayPaymentId,
+              status: payment.status,
+
+              invoiceNo: payment.invoiceNo,
+              taxableAmount: payment.taxableAmount,
+              gstRate: payment.gstRate,
+              cgst: payment.cgst,
+              sgst: payment.sgst,
+              igst: payment.igst,
+              totalTax: payment.totalTax,
+              totalAmount: payment.totalAmount,
+
+              pgChargeRate: payment.pgChargeRate,
+              pgCharge: payment.pgCharge,
+              pgIgst: payment.pgIgst,
+              pgTotal: payment.pgTotal,
+              receivableAmount: payment.receivableAmount,
+
+              country: payment.country,
+              state: payment.state,
+              city: payment.city,
+              platform: payment.platform,
+
+              createdAt: payment.createdAt?.toISOString() ?? null,
+            };
+          }),
+        );
+
+        // 9. Calculate pagination
+        const totalPages = Math.ceil(totalRecords / pageLimit);
+
+        // 10. Return response
+        return {
+          success: true,
+          message: "Recharge payment logs fetched successfully",
+          data,
+          pagination: {
+            totalRecords,
+            totalPages,
+            currentPage,
+            limit: pageLimit,
+          },
+        };
+      } catch (error) {
+        console.error("getRechargePaymentLogs error:", error);
+
         throw new Error(
-          `Invalid status. Allowed values are: ${allowedStatuses.join(", ")}`
+          error.message || "Failed to fetch recharge payment logs",
         );
       }
+    },
 
-      where.status = normalizedStatus;
-    }
-
-    // 4. Validate and apply startDate
-    if (startDate) {
-      const parsedStartDate = new Date(startDate);
-
-      if (Number.isNaN(parsedStartDate.getTime())) {
-        throw new Error("Invalid startDate. Please provide a valid date.");
-      }
-
-      where.createdAt = {
-        ...where.createdAt,
-        gte: parsedStartDate,
-      };
-    }
-
-    // 5. Validate and apply endDate
-    if (endDate) {
-      const parsedEndDate = new Date(endDate);
-
-      if (Number.isNaN(parsedEndDate.getTime())) {
-        throw new Error("Invalid endDate. Please provide a valid date.");
-      }
-
-      // Include the entire day when endDate is YYYY-MM-DD.
-      if (/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
-        parsedEndDate.setHours(23, 59, 59, 999);
-      }
-
-      where.createdAt = {
-        ...where.createdAt,
-        lte: parsedEndDate,
-      };
-    }
-
-    // 6. Validate date range
-    if (
-      where.createdAt?.gte &&
-      where.createdAt?.lte &&
-      where.createdAt.gte > where.createdAt.lte
-    ) {
-      throw new Error("startDate cannot be later than endDate.");
-    }
-
-    // 7. Fetch payment logs and total count
-    const [paymentLogs, totalRecords] = await Promise.all([
-      prisma.payment.findMany({
-        where,
-        orderBy: {
-          createdAt: "desc",
-        },
-        skip,
-        take: pageLimit,
-      }),
-
-      prisma.payment.count({
-        where,
-      }),
-    ]);
-
-    // 8. Fetch recharge pack names
-    const data = await Promise.all(
-      paymentLogs.map(async (payment) => {
-        let rechargePackName = null;
-        let rechargePackDescription = null;
-
-        try {
-          if (payment.rechargePackId) {
-            const rechargePack = await prisma.rechargePack.findUnique({
-              where: {
-                id: payment.rechargePackId,
-              },
-              select: {
-                name: true,
-                description: true,
-              },
-            });
-
-            rechargePackName = rechargePack?.name ?? null;
-            rechargePackDescription = rechargePack?.description ?? null;
-          }
-        } catch (rechargePackError) {
-          // Return the payment even if its recharge pack no longer exists.
-          console.error(
-            `Failed to fetch recharge pack ${payment.rechargePackId}:`,
-            rechargePackError.message
-          );
+    getMyBookedPujaService: async (
+      _,
+      {
+        page = 1,
+        limit = 10,
+        paymentStatus,
+        bookingStatus,
+        startDate,
+        endDate,
+      },
+      { user },
+    ) => {
+      try {
+        // Authentication
+        if (!user?.id) {
+          throw new Error("Unauthorized: Please login to continue");
         }
+
+        const currentPage = Math.max(1, Number(page) || 1);
+        const pageLimit = Math.max(1, Math.min(100, Number(limit) || 10));
+        const skip = (currentPage - 1) * pageLimit;
+
+        // Always restrict bookings to the authenticated user
+        const where = {
+          userId: user.id,
+        };
+
+        // Optional status filters
+        if (paymentStatus) {
+          where.paymentStatus = paymentStatus;
+        }
+
+        if (bookingStatus) {
+          where.bookingStatus = bookingStatus;
+        }
+
+        // Date filters: filter using booking creation date
+        if (startDate || endDate) {
+          where.createdAt = {};
+
+          if (startDate) {
+            const start = new Date(startDate);
+
+            if (Number.isNaN(start.getTime())) {
+              throw new Error("Invalid startDate");
+            }
+
+            start.setHours(0, 0, 0, 0);
+            where.createdAt.gte = start;
+          }
+
+          if (endDate) {
+            const end = new Date(endDate);
+
+            if (Number.isNaN(end.getTime())) {
+              throw new Error("Invalid endDate");
+            }
+
+            // Include the entire end date
+            end.setHours(23, 59, 59, 999);
+            where.createdAt.lte = end;
+          }
+
+          if (startDate && endDate && new Date(startDate) > new Date(endDate)) {
+            throw new Error("startDate cannot be after endDate");
+          }
+        }
+
+        const [bookings, total] = await Promise.all([
+          prisma.pujaBooking.findMany({
+            where,
+            skip,
+            take: pageLimit,
+            orderBy: {
+              createdAt: "desc",
+            },
+            select: {
+              id: true,
+              userId: true,
+              pujaId: true,
+              mantraOptionId: true,
+              mantraOptionName: true,
+              quantity: true,
+              unitPrice: true,
+              totalAmount: true,
+              paymentStatus: true,
+              bookingStatus: true,
+              createdAt: true,
+              puja: {
+                select: {
+                  title: true,
+                },
+              },
+            },
+          }),
+
+          prisma.pujaBooking.count({
+            where,
+          }),
+        ]);
+
+        const data = bookings.map((booking) => ({
+          id: booking.id,
+          userId: booking.userId,
+          pujaId: booking.pujaId,
+          pujaName: booking.puja?.title ?? null,
+          mantraOptionId: booking.mantraOptionId,
+          mantraOptionName: booking.mantraOptionName,
+          quantity: booking.quantity,
+          unitPrice: Number(booking.unitPrice),
+          totalAmount: Number(booking.totalAmount),
+          paymentStatus: booking.paymentStatus,
+          bookingStatus: booking.bookingStatus,
+          bookingDate: booking.createdAt
+            ? booking.createdAt.toISOString()
+            : null,
+        }));
 
         return {
-          id: payment.id,
-          userId: payment.userId,
-          rechargePackId: payment.rechargePackId,
-          paymentOrderId: payment.paymentOrderId,
-
-          rechargePackName,
-          rechargePackDescription,
-
-          amount: payment.amount,
-          coins: payment.coins,
-
-          provider: payment.provider,
-          razorpayOrderId: payment.razorpayOrderId,
-          razorpayPaymentId: payment.razorpayPaymentId,
-          status: payment.status,
-
-          invoiceNo: payment.invoiceNo,
-          taxableAmount: payment.taxableAmount,
-          gstRate: payment.gstRate,
-          cgst: payment.cgst,
-          sgst: payment.sgst,
-          igst: payment.igst,
-          totalTax: payment.totalTax,
-          totalAmount: payment.totalAmount,
-
-          pgChargeRate: payment.pgChargeRate,
-          pgCharge: payment.pgCharge,
-          pgIgst: payment.pgIgst,
-          pgTotal: payment.pgTotal,
-          receivableAmount: payment.receivableAmount,
-
-          country: payment.country,
-          state: payment.state,
-          city: payment.city,
-          platform: payment.platform,
-
-          createdAt: payment.createdAt?.toISOString() ?? null,
+          success: true,
+          message: "Your puja bookings fetched successfully",
+          total,
+          currentPage,
+          totalPages: Math.ceil(total / pageLimit),
+          limit: pageLimit,
+          data,
         };
-      })
-    );
+      } catch (error) {
+        console.error("getMyBookedPujaService error:", error);
+        throw new Error(error.message || "Failed to fetch your puja bookings");
+      }
+    },
 
-    // 9. Calculate pagination
-    const totalPages = Math.ceil(totalRecords / pageLimit);
+    getServicesInvoice: async (_, { transactionId }) => {
+      try {
+        // 1. Find the service payment transaction
+        const transaction = await prisma.servicesBankPaymentLog.findFirst({
+          where: {
+            id: transactionId,
+          },
+          include: {
+            user: true,
+          },
+        });
 
-    // 10. Return response
-    return {
-      success: true,
-      message: "Recharge payment logs fetched successfully",
-      data,
-      pagination: {
-        totalRecords,
-        totalPages,
-        currentPage,
-        limit: pageLimit,
-      },
-    };
-  } catch (error) {
-    console.error("getRechargePaymentLogs error:", error);
-
-    throw new Error(
-      error.message || "Failed to fetch recharge payment logs"
-    );
-  }
-},
-
-
-getMyBookedPujaService: async (
-  _,
-  {
-    page = 1,
-    limit = 10,
-    paymentStatus,
-    bookingStatus,
-    startDate,
-    endDate,
-  },
-  { user }
-) => {
-  try {
-    // Authentication
-    if (!user?.id) {
-      throw new Error("Unauthorized: Please login to continue");
-    }
-
-    const currentPage = Math.max(1, Number(page) || 1);
-    const pageLimit = Math.max(1, Math.min(100, Number(limit) || 10));
-    const skip = (currentPage - 1) * pageLimit;
-
-    // Always restrict bookings to the authenticated user
-    const where = {
-      userId: user.id,
-    };
-
-    // Optional status filters
-    if (paymentStatus) {
-      where.paymentStatus = paymentStatus;
-    }
-
-    if (bookingStatus) {
-      where.bookingStatus = bookingStatus;
-    }
-
-    // Date filters: filter using booking creation date
-    if (startDate || endDate) {
-      where.createdAt = {};
-
-      if (startDate) {
-        const start = new Date(startDate);
-
-        if (Number.isNaN(start.getTime())) {
-          throw new Error("Invalid startDate");
+        if (!transaction) {
+          throw new Error("Service payment transaction not found");
         }
 
-        start.setHours(0, 0, 0, 0);
-        where.createdAt.gte = start;
-      }
-
-      if (endDate) {
-        const end = new Date(endDate);
-
-        if (Number.isNaN(end.getTime())) {
-          throw new Error("Invalid endDate");
+        // 2. Validate payment status
+        if (transaction.status !== "SUCCESS") {
+          throw new Error("Invoice is available only for successful payments");
         }
 
-        // Include the entire end date
-        end.setHours(23, 59, 59, 999);
-        where.createdAt.lte = end;
-      }
+        // 3. Calculate invoice amounts
+        const amount = Number(
+          transaction.totalAmount ?? transaction.amount ?? 0,
+        );
+        const gstRate = Number(transaction.gstRate ?? 18);
 
-      if (
-        startDate &&
-        endDate &&
-        new Date(startDate) > new Date(endDate)
-      ) {
-        throw new Error("startDate cannot be after endDate");
-      }
-    }
+        // Prefer the stored taxable amount and tax values
+        const taxableAmount =
+          transaction.taxableAmount != null
+            ? Number(transaction.taxableAmount)
+            : amount / (1 + gstRate / 100);
 
-    const [bookings, total] = await Promise.all([
-      prisma.pujaBooking.findMany({
-        where,
-        skip,
-        take: pageLimit,
-        orderBy: {
-          createdAt: "desc",
-        },
-        select: {
-          id: true,
-          userId: true,
-          pujaId: true,
-          mantraOptionId: true,
-          mantraOptionName: true,
-          quantity: true,
-          unitPrice: true,
-          totalAmount: true,
-          paymentStatus: true,
-          bookingStatus: true,
-          createdAt: true,
-          puja: {
+        const sgst = Number(transaction.sgst ?? 0);
+        const cgst = Number(transaction.cgst ?? 0);
+        const igst = Number(transaction.igst ?? 0);
+
+        const totalTax =
+          transaction.totalTax != null
+            ? Number(transaction.totalTax)
+            : sgst + cgst + igst || amount - taxableAmount;
+
+        // 4. Fetch service name
+        let serviceName = "-";
+
+        if (transaction.serviceType === "PUJA") {
+          const pujaService = await prisma.pujaService.findUnique({
+            where: {
+              id: transaction.serviceId,
+            },
             select: {
               title: true,
             },
+          });
+
+          serviceName = pujaService?.title || "-";
+        } else if (transaction.serviceType === "SERVICE") {
+          const service = await prisma.service.findUnique({
+            where: {
+              id: transaction.serviceId,
+            },
+            select: {
+              name: true,
+            },
+          });
+
+          serviceName = service?.name || "-";
+        }
+
+        // 5. Return invoice details
+        return {
+          id: transaction.id,
+
+          invoiceNo:
+            transaction.invoiceNo || `INV-${transaction.id.slice(0, 8)}`,
+
+          transactionId: transaction.razorpayPaymentId || transaction.id,
+
+          razorpayOrderId: transaction.razorpayOrderId || null,
+
+          razorpayPaymentId: transaction.razorpayPaymentId || null,
+
+          amount: taxableAmount,
+
+          discount: Number(transaction.discount ?? 0),
+
+          taxableAmount,
+
+          sgst,
+          cgst,
+          igst,
+
+          // ServicesBankPaymentLog stores gstRate, not separate tax rates.
+          sgstRate:
+            transaction.gstRate != null && igst === 0
+              ? Number(transaction.gstRate) / 2
+              : 0,
+
+          cgstRate:
+            transaction.gstRate != null && igst === 0
+              ? Number(transaction.gstRate) / 2
+              : 0,
+
+          igstRate: igst > 0 ? gstRate : 0,
+
+          gstRate,
+
+          totalTax,
+
+          totalAmount: amount,
+
+          amountReceived: Number(transaction.receivableAmount ?? amount),
+
+          amountInWords: this.amountInWords ? this.amountInWords(amount) : null,
+
+          userName: transaction.user?.name || "-",
+
+          city: transaction.city || "-",
+
+          state: transaction.state || "-",
+
+          pincode: transaction.pincode || "-",
+
+          country: transaction.country || transaction.user?.country || "India",
+
+          placeOfSupply: transaction.state || "-",
+
+          supplierGSTIN: "07ABBFM1961C1ZN",
+
+          supplierAddress:
+            "2ND FLOOR, 1511/2B, Kotla Mubarakpur, Bhishma Pitamah Marg, Wazir Nagar, New Delhi, South East Delhi, Delhi, 110003",
+
+          website: "www.dhwaniastro.com",
+
+          email: "support@dhwaniastro.com",
+
+          recipientGSTIN: "-",
+
+          transactionHistoryUrl: "-",
+
+          hsnSac: "999799",
+
+          reverseCharge: false,
+
+          panNumber: "ABBFM1961C",
+
+          serviceType: transaction.serviceType,
+
+          serviceId: transaction.serviceId,
+
+          serviceName,
+
+          createdAt: transaction.createdAt,
+        };
+      } catch (error) {
+        console.error("getServicesInvoice error:", error);
+
+        throw new Error(error.message || "Failed to fetch service invoice");
+      }
+    },
+
+    getRechargeInvoice: async (_, { transactionId }) => {
+      try {
+        // 1. Find the recharge payment transaction
+        const transaction = await prisma.payment.findFirst({
+          where: {
+            id: transactionId,
           },
-        },
-      }),
-
-      prisma.pujaBooking.count({
-        where,
-      }),
-    ]);
-
-    const data = bookings.map((booking) => ({
-      id: booking.id,
-      userId: booking.userId,
-      pujaId: booking.pujaId,
-      pujaName: booking.puja?.title ?? null,
-      mantraOptionId: booking.mantraOptionId,
-      mantraOptionName: booking.mantraOptionName,
-      quantity: booking.quantity,
-      unitPrice: Number(booking.unitPrice),
-      totalAmount: Number(booking.totalAmount),
-      paymentStatus: booking.paymentStatus,
-      bookingStatus: booking.bookingStatus,
-      bookingDate: booking.createdAt
-        ? booking.createdAt.toISOString()
-        : null,
-    }));
-
-    return {
-      success: true,
-      message: "Your puja bookings fetched successfully",
-      total,
-      currentPage,
-      totalPages: Math.ceil(total / pageLimit),
-      limit: pageLimit,
-      data,
-    };
-  } catch (error) {
-    console.error("getMyBookedPujaService error:", error);
-    throw new Error(
-      error.message || "Failed to fetch your puja bookings"
-    );
-  }
-},
-
-
-
-
-getServicesInvoice: async (_, { transactionId }) => {
-  try {
-    // 1. Find the service payment transaction
-    const transaction = await prisma.servicesBankPaymentLog.findFirst({
-      where: {
-        id: transactionId,
-      },
-      include: {
-        user: true,
-      },
-    });
-
-    if (!transaction) {
-      throw new Error("Service payment transaction not found");
-    }
-
-    // 2. Validate payment status
-    if (transaction.status !== "SUCCESS") {
-      throw new Error("Invoice is available only for successful payments");
-    }
-
-    // 3. Calculate invoice amounts
-    const amount = Number(transaction.totalAmount ?? transaction.amount ?? 0);
-    const gstRate = Number(transaction.gstRate ?? 18);
-
-    // Prefer the stored taxable amount and tax values
-    const taxableAmount =
-      transaction.taxableAmount != null
-        ? Number(transaction.taxableAmount)
-        : amount / (1 + gstRate / 100);
-
-    const sgst = Number(transaction.sgst ?? 0);
-    const cgst = Number(transaction.cgst ?? 0);
-    const igst = Number(transaction.igst ?? 0);
-
-    const totalTax =
-      transaction.totalTax != null
-        ? Number(transaction.totalTax)
-        : sgst + cgst + igst || amount - taxableAmount;
-
-    // 4. Fetch service name
-    let serviceName = "-";
-
-    if (transaction.serviceType === "PUJA") {
-      const pujaService = await prisma.pujaService.findUnique({
-        where: {
-          id: transaction.serviceId,
-        },
-        select: {
-          name: true,
-        },
-      });
-
-      serviceName = pujaService?.name || "-";
-    } else if (transaction.serviceType === "SERVICE") {
-      const service = await prisma.service.findUnique({
-        where: {
-          id: transaction.serviceId,
-        },
-        select: {
-          name: true,
-        },
-      });
+          include: {
+            user: true,
+          },
+        });
 
-      serviceName = service?.name || "-";
-    }
+        if (!transaction) {
+          throw new Error("Recharge payment transaction not found");
+        }
 
-    // 5. Return invoice details
-    return {
-      id: transaction.id,
+        // 2. Validate payment status
+        if (transaction.status !== "SUCCESS") {
+          throw new Error("Invoice is available only for successful payments");
+        }
 
-      invoiceNo:
-        transaction.invoiceNo ||
-        `INV-${transaction.id.slice(0, 8)}`,
+        // 3. Fetch recharge pack details
+        let rechargePackName = "-";
+        let rechargePackDescription = "-";
 
-      transactionId:
-        transaction.razorpayPaymentId ||
-        transaction.id,
+        if (transaction.rechargePackId) {
+          const rechargePack = await prisma.rechargePack.findUnique({
+            where: {
+              id: transaction.rechargePackId,
+            },
+            select: {
+              name: true,
+              description: true,
+            },
+          });
 
-      razorpayOrderId: transaction.razorpayOrderId || null,
+          rechargePackName = rechargePack?.name || "-";
+          rechargePackDescription = rechargePack?.description || "-";
+        }
 
-      razorpayPaymentId: transaction.razorpayPaymentId || null,
+        // 4. Calculate invoice amounts
+        const totalAmount = Number(
+          transaction.totalAmount ?? transaction.amount ?? 0,
+        );
 
-      amount: taxableAmount,
+        const gstRate = Number(transaction.gstRate ?? 18);
 
-      discount: Number(transaction.discount ?? 0),
+        // Prefer the stored taxable amount
+        const taxableAmount =
+          transaction.taxableAmount != null
+            ? Number(transaction.taxableAmount)
+            : totalAmount / (1 + gstRate / 100);
 
-      taxableAmount,
+        const sgst = Number(transaction.sgst ?? 0);
+        const cgst = Number(transaction.cgst ?? 0);
+        const igst = Number(transaction.igst ?? 0);
 
-      sgst,
-      cgst,
-      igst,
+        const totalTax =
+          transaction.totalTax != null
+            ? Number(transaction.totalTax)
+            : sgst + cgst + igst || totalAmount - taxableAmount;
 
-      // ServicesBankPaymentLog stores gstRate, not separate tax rates.
-      sgstRate:
-        transaction.gstRate != null && igst === 0
-          ? Number(transaction.gstRate) / 2
-          : 0,
+        // 5. Calculate GST rates
+        const sgstRate = igst === 0 ? gstRate / 2 : 0;
 
-      cgstRate:
-        transaction.gstRate != null && igst === 0
-          ? Number(transaction.gstRate) / 2
-          : 0,
+        const cgstRate = igst === 0 ? gstRate / 2 : 0;
 
-      igstRate:
-        igst > 0
-          ? gstRate
-          : 0,
+        const igstRate = igst > 0 ? gstRate : 0;
 
-      gstRate,
+        // 6. Payment gateway charges
+        const pgChargeRate = Number(transaction.pgChargeRate ?? 0);
 
-      totalTax,
+        const pgCharge = Number(transaction.pgCharge ?? 0);
 
-      totalAmount: amount,
+        const pgIgst = Number(transaction.pgIgst ?? 0);
 
-      amountReceived: Number(
-        transaction.receivableAmount ?? amount
-      ),
+        const pgTotal = Number(transaction.pgTotal ?? pgCharge + pgIgst);
 
-      amountInWords: this.amountInWords
-        ? this.amountInWords(amount)
-        : null,
+        const receivableAmount = Number(
+          transaction.receivableAmount ?? totalAmount,
+        );
 
-      userName: transaction.user?.name || "-",
+        // 7. Return recharge invoice details
+        return {
+          id: transaction.id,
 
-      city: transaction.city || "-",
+          invoiceNo:
+            transaction.invoiceNo || `INV-${transaction.id.slice(0, 8)}`,
 
-      state: transaction.state || "-",
+          transactionId: transaction.razorpayPaymentId || transaction.id,
 
-      pincode: transaction.pincode || "-",
+          paymentOrderId: transaction.paymentOrderId || null,
 
-      country: transaction.country || transaction.user?.country || "India",
+          razorpayOrderId: transaction.razorpayOrderId || null,
 
-      placeOfSupply: transaction.state || "-",
+          razorpayPaymentId: transaction.razorpayPaymentId || null,
 
-      supplierGSTIN: "07ABBFM1961C1ZN",
+          // Recharge details
+          rechargePackId: transaction.rechargePackId || null,
 
-      supplierAddress:
-        "2ND FLOOR, 1511/2B, Kotla Mubarakpur, Bhishma Pitamah Marg, Wazir Nagar, New Delhi, South East Delhi, Delhi, 110003",
+          rechargePackName,
 
-      website: "www.dhwaniastro.com",
+          rechargePackDescription,
 
-      email: "support@dhwaniastro.com",
+          coins: Number(transaction.coins ?? 0),
 
-      recipientGSTIN: "-",
+          // Invoice amounts
+          amount: taxableAmount,
 
-      transactionHistoryUrl: "-",
+          taxableAmount,
 
-      hsnSac: "999799",
+          discount: 0,
 
-      reverseCharge: false,
+          gstRate,
 
-      panNumber: "ABBFM1961C",
+          sgstRate,
+          cgstRate,
+          igstRate,
 
-      serviceType: transaction.serviceType,
+          sgst,
+          cgst,
+          igst,
 
-      serviceId: transaction.serviceId,
+          totalTax,
 
-      serviceName,
+          totalAmount,
 
-      createdAt: transaction.createdAt,
-    };
-  } catch (error) {
-    console.error("getServicesInvoice error:", error);
+          // Payment gateway charges
+          pgChargeRate,
+          pgCharge,
+          pgIgst,
+          pgTotal,
 
-    throw new Error(
-      error.message || "Failed to fetch service invoice"
-    );
-  }
-},
+          // Amount after payment gateway charges
+          amountReceived: receivableAmount,
 
-getRechargeInvoice: async (_, { transactionId }) => {
-  try {
-    // 1. Find the recharge payment transaction
-    const transaction = await prisma.payment.findFirst({
-      where: {
-        id: transactionId,
-      },
-      include: {
-        user: true,
-      },
-    });
+          amountInWords: this.amountInWords
+            ? this.amountInWords(totalAmount)
+            : null,
 
-    if (!transaction) {
-      throw new Error("Recharge payment transaction not found");
-    }
+          // Customer details
+          userName: transaction.user?.name || "-",
 
-    // 2. Validate payment status
-    if (transaction.status !== "SUCCESS") {
-      throw new Error(
-        "Invoice is available only for successful payments"
-      );
-    }
+          city: transaction.city || "-",
 
-    // 3. Fetch recharge pack details
-    let rechargePackName = "-";
-    let rechargePackDescription = "-";
+          state: transaction.state || "-",
 
-    if (transaction.rechargePackId) {
-      const rechargePack = await prisma.rechargePack.findUnique({
-        where: {
-          id: transaction.rechargePackId,
-        },
-        select: {
-          name: true,
-          description: true,
-        },
-      });
+          country: transaction.country || transaction.user?.country || "India",
 
-      rechargePackName = rechargePack?.name || "-";
-      rechargePackDescription = rechargePack?.description || "-";
-    }
+          placeOfSupply: transaction.state || "-",
 
-    // 4. Calculate invoice amounts
-    const totalAmount = Number(
-      transaction.totalAmount ??
-      transaction.amount ??
-      0
-    );
+          pincode: transaction.pincode || "-",
 
-    const gstRate = Number(transaction.gstRate ?? 18);
+          recipientGSTIN: "-",
 
-    // Prefer the stored taxable amount
-    const taxableAmount =
-      transaction.taxableAmount != null
-        ? Number(transaction.taxableAmount)
-        : totalAmount / (1 + gstRate / 100);
+          // Supplier details
+          supplierGSTIN: "07ABBFM1961C1ZN",
 
-    const sgst = Number(transaction.sgst ?? 0);
-    const cgst = Number(transaction.cgst ?? 0);
-    const igst = Number(transaction.igst ?? 0);
+          supplierAddress:
+            "2ND FLOOR, 1511/2B, Kotla Mubarakpur, Bhishma Pitamah Marg, Wazir Nagar, New Delhi, South East Delhi, Delhi, 110003",
 
-    const totalTax =
-      transaction.totalTax != null
-        ? Number(transaction.totalTax)
-        : sgst + cgst + igst || totalAmount - taxableAmount;
+          website: "www.dhwaniastro.com",
 
-    // 5. Calculate GST rates
-    const sgstRate =
-      igst === 0 ? gstRate / 2 : 0;
+          email: "support@dhwaniastro.com",
 
-    const cgstRate =
-      igst === 0 ? gstRate / 2 : 0;
+          hsnSac: "999799",
 
-    const igstRate =
-      igst > 0 ? gstRate : 0;
+          reverseCharge: false,
 
-    // 6. Payment gateway charges
-    const pgChargeRate = Number(
-      transaction.pgChargeRate ?? 0
-    );
+          panNumber: "ABBFM1961C",
 
-    const pgCharge = Number(
-      transaction.pgCharge ?? 0
-    );
+          transactionHistoryUrl: "-",
 
-    const pgIgst = Number(
-      transaction.pgIgst ?? 0
-    );
+          // Payment details
+          provider: transaction.provider || "-",
 
-    const pgTotal = Number(
-      transaction.pgTotal ?? pgCharge + pgIgst
-    );
+          status: transaction.status,
 
-    const receivableAmount = Number(
-      transaction.receivableAmount ?? totalAmount
-    );
+          platform: transaction.platform || "-",
 
-    // 7. Return recharge invoice details
-    return {
-      id: transaction.id,
+          createdAt: transaction.createdAt,
+        };
+      } catch (error) {
+        console.error("getRechargeInvoice error:", error);
 
-      invoiceNo:
-        transaction.invoiceNo ||
-        `INV-${transaction.id.slice(0, 8)}`,
-
-      transactionId:
-        transaction.razorpayPaymentId ||
-        transaction.id,
-
-      paymentOrderId:
-        transaction.paymentOrderId || null,
-
-      razorpayOrderId:
-        transaction.razorpayOrderId || null,
-
-      razorpayPaymentId:
-        transaction.razorpayPaymentId || null,
-
-      // Recharge details
-      rechargePackId:
-        transaction.rechargePackId || null,
-
-      rechargePackName,
-
-      rechargePackDescription,
-
-      coins: Number(transaction.coins ?? 0),
-
-      // Invoice amounts
-      amount: taxableAmount,
-
-      taxableAmount,
-
-      discount: 0,
-
-      gstRate,
-
-      sgstRate,
-      cgstRate,
-      igstRate,
-
-      sgst,
-      cgst,
-      igst,
-
-      totalTax,
-
-      totalAmount,
-
-      // Payment gateway charges
-      pgChargeRate,
-      pgCharge,
-      pgIgst,
-      pgTotal,
-
-      // Amount after payment gateway charges
-      amountReceived: receivableAmount,
-
-      amountInWords: this.amountInWords
-        ? this.amountInWords(totalAmount)
-        : null,
-
-      // Customer details
-      userName: transaction.user?.name || "-",
-
-      city: transaction.city || "-",
-
-      state: transaction.state || "-",
-
-      country:
-        transaction.country ||
-        transaction.user?.country ||
-        "India",
-
-      placeOfSupply: transaction.state || "-",
-
-      pincode: transaction.pincode || "-",
-
-      recipientGSTIN: "-",
-
-      // Supplier details
-      supplierGSTIN: "07ABBFM1961C1ZN",
-
-      supplierAddress:
-        "2ND FLOOR, 1511/2B, Kotla Mubarakpur, Bhishma Pitamah Marg, Wazir Nagar, New Delhi, South East Delhi, Delhi, 110003",
-
-      website: "www.dhwaniastro.com",
-
-      email: "support@dhwaniastro.com",
-
-      hsnSac: "999799",
-
-      reverseCharge: false,
-
-      panNumber: "ABBFM1961C",
-
-      transactionHistoryUrl: "-",
-
-      // Payment details
-      provider: transaction.provider || "-",
-
-      status: transaction.status,
-
-      platform: transaction.platform || "-",
-
-      createdAt: transaction.createdAt,
-    };
-  } catch (error) {
-    console.error("getRechargeInvoice error:", error);
-
-    throw new Error(
-      error.message || "Failed to fetch recharge invoice"
-    );
-  }
-},
-
-
-
-
+        throw new Error(error.message || "Failed to fetch recharge invoice");
+      }
+    },
   },
   //----------------start code for mutation ----------------------------
   Mutation: {
@@ -4686,7 +4620,9 @@ getRechargeInvoice: async (_, { transactionId }) => {
       }
 
       if (chatTime < 5 && pricePerMin != 0) {
-        throw new Error("A minimum balance sufficient for at least 5 minutes is required. Recharge Now !");
+        throw new Error(
+          "A minimum balance sufficient for at least 5 minutes is required. Recharge Now !",
+        );
       }
 
       const intake = await prisma.intake.create({
@@ -6964,394 +6900,389 @@ getRechargeInvoice: async (_, { transactionId }) => {
     // },
 
     sendLiveGift: async (_, { streamId, giftId, quantity }, { user }) => {
-  try {
-    console.log("========== sendLiveGift ==========");
-    console.log("User ID:", user?.id);
-    console.log("Stream ID:", streamId);
-    console.log("Gift ID:", giftId);
-    console.log("Quantity:", quantity);
+      try {
+        console.log("========== sendLiveGift ==========");
+        console.log("User ID:", user?.id);
+        console.log("Stream ID:", streamId);
+        console.log("Gift ID:", giftId);
+        console.log("Quantity:", quantity);
 
-    // =====================================================
-    // 1. AUTHENTICATION AND INPUT VALIDATION
-    // =====================================================
+        // =====================================================
+        // 1. AUTHENTICATION AND INPUT VALIDATION
+        // =====================================================
 
-    if (!user?.id) {
-      throw new Error("Unauthorized");
-    }
+        if (!user?.id) {
+          throw new Error("Unauthorized");
+        }
 
-    if (!prisma) {
-      throw new Error("Prisma client is not initialized");
-    }
+        if (!prisma) {
+          throw new Error("Prisma client is not initialized");
+        }
 
-    if (!Number.isInteger(quantity) || quantity < 1 || quantity > 100) {
-      throw new Error("Gift quantity must be between 1 and 100");
-    }
+        if (!Number.isInteger(quantity) || quantity < 1 || quantity > 100) {
+          throw new Error("Gift quantity must be between 1 and 100");
+        }
 
-    if (!streamId || !giftId) {
-      throw new Error("Stream ID and gift ID are required");
-    }
+        if (!streamId || !giftId) {
+          throw new Error("Stream ID and gift ID are required");
+        }
 
-    // =====================================================
-    // 2. FETCH SENDER DETAILS
-    // =====================================================
+        // =====================================================
+        // 2. FETCH SENDER DETAILS
+        // =====================================================
 
-    const sender = await prisma.user.findUnique({
-      where: {
-        id: user.id,
-      },
-      select: {
-        id: true,
-        name: true,
-        mobile: true,
-        countryCode: true,
-        profileImage: true,
-      },
-    });
-
-    if (!sender) {
-      throw new Error("Gift sender not found");
-    }
-
-    const senderName = (sender.name || "user")
-      .trim()
-      .toLowerCase()
-      .normalize("NFKD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .replace(/[^a-z0-9]+/g, "_")
-      .replace(/^_+|_+$/g, "")
-      .slice(0, 40);
-
-    console.log("Gift sender details:", {
-      senderId: sender.id,
-      senderName,
-    });
-
-    // =====================================================
-    // 3. VALIDATE THE LIVE STREAM
-    // =====================================================
-
-    const stream = await prisma.liveStream.findFirst({
-      where: {
-        id: streamId,
-        status: "LIVE",
-      },
-    });
-
-    if (!stream) {
-      throw new Error("Live stream is not active");
-    }
-
-    if (stream.astrologerId === user.id) {
-      throw new Error("Astrologers cannot send gifts to their own stream");
-    }
-
-    if (!stream.chatRoomId) {
-      throw new Error("Live stream Chat room is not configured");
-    }
-
-    // =====================================================
-    // 4. FETCH GIFT FROM THE Gift MODEL
-    // =====================================================
-
-    const gift = await prisma.gift.findFirst({
-      where: {
-        id: giftId,
-        status: "active",
-      },
-      select: {
-        id: true,
-        name: true,
-        amount: true,
-        image: true,
-        status: true,
-      },
-    });
-
-    if (!gift) {
-      throw new Error("Gift not found or inactive");
-    }
-
-    // Gift.amount replaces LiveGift.price.
-    // Gift.image replaces LiveGift.icon.
-
-    if (
-      !Number.isSafeInteger(gift.amount) ||
-      gift.amount <= 0
-    ) {
-      throw new Error("Invalid gift amount");
-    }
-
-    const totalCoins = gift.amount * quantity;
-
-    if (!Number.isSafeInteger(totalCoins) || totalCoins <= 0) {
-      throw new Error("Invalid total gift amount");
-    }
-
-    console.log("Gift details:", {
-      giftId: gift.id,
-      giftName: gift.name,
-      giftAmount: gift.amount,
-      giftImage: gift.image,
-      quantity,
-      totalCoins,
-    });
-
-    // =====================================================
-    // 5. FETCH ASTROLOGER COMMISSION
-    // =====================================================
-
-    const commissionConfig =
-      await prisma.astrologerPricing.findUnique({
-        where: {
-          astrologerId_type: {
-            astrologerId: stream.astrologerId,
-            type: "GIFT_COMMISSION",
-          },
-        },
-      });
-
-    const commissionPercent =
-      commissionConfig?.isActive &&
-      commissionConfig.commissionPercent != null
-        ? commissionConfig.commissionPercent
-        : 0;
-
-    if (
-      !Number.isFinite(commissionPercent) ||
-      commissionPercent < 0 ||
-      commissionPercent > 100
-    ) {
-      throw new Error("Invalid astrologer gift commission");
-    }
-
-    // Calculate astrologer earnings and platform commission.
-
-    const astrologerCoins = Math.floor(
-      (totalCoins * (100 - commissionPercent)) / 100
-    );
-
-    const commissionCoins = totalCoins - astrologerCoins;
-
-    console.log("Gift calculation:", {
-      giftName: gift.name,
-      quantity,
-      totalCoins,
-      commissionPercent,
-      astrologerCoins,
-      commissionCoins,
-    });
-
-    // =====================================================
-    // 6. ATOMIC WALLET UPDATES AND TRANSACTION RECORDS
-    // =====================================================
-
-    const result = await prisma.$transaction(async (tx) => {
-      // Create user wallet if it does not exist.
-
-      await tx.userWallet.upsert({
-        where: {
-          userId: user.id,
-        },
-        create: {
-          userId: user.id,
-          balanceCoins: 0,
-        },
-        update: {},
-      });
-
-      // Create astrologer wallet if it does not exist.
-
-      await tx.astrologerWallet.upsert({
-        where: {
-          astrologerId: stream.astrologerId,
-        },
-        create: {
-          astrologerId: stream.astrologerId,
-          balanceCoins: 0,
-        },
-        update: {},
-      });
-
-      // Debit the user's wallet only if sufficient coins exist.
-
-      const debit = await tx.userWallet.updateMany({
-        where: {
-          userId: user.id,
-          balanceCoins: {
-            gte: totalCoins,
-          },
-        },
-        data: {
-          balanceCoins: {
-            decrement: totalCoins,
-          },
-        },
-      });
-
-      if (debit.count !== 1) {
-        throw new Error("Insufficient wallet balance");
-      }
-
-      // Fetch updated user wallet.
-
-      const userWallet = await tx.userWallet.findUniqueOrThrow({
-        where: {
-          userId: user.id,
-        },
-      });
-
-      // Credit astrologer wallet.
-
-      await tx.astrologerWallet.update({
-        where: {
-          astrologerId: stream.astrologerId,
-        },
-        data: {
-          balanceCoins: {
-            increment: astrologerCoins,
-          },
-          totalEarned: {
-            increment: astrologerCoins,
-          },
-          totalCommission: {
-            increment: commissionCoins,
-          },
-        },
-      });
-
-      // Fetch updated astrologer wallet.
-
-      const astrologerWallet =
-        await tx.astrologerWallet.findUniqueOrThrow({
+        const sender = await prisma.user.findUnique({
           where: {
-            astrologerId: stream.astrologerId,
+            id: user.id,
+          },
+          select: {
+            id: true,
+            name: true,
+            mobile: true,
+            countryCode: true,
+            profileImage: true,
           },
         });
 
-      // Record user wallet debit.
+        if (!sender) {
+          throw new Error("Gift sender not found");
+        }
 
-      await tx.walletTransaction.create({
-        data: {
-          userWalletId: userWallet.id,
-          type: "DEBIT",
-          coins: totalCoins,
-          amount: totalCoins,
-          updatedBalance: userWallet.balanceCoins,
-          description: `Live gift: ${gift.name} x${quantity}`,
-        },
-      });
+        const senderName = (sender.name || "user")
+          .trim()
+          .toLowerCase()
+          .normalize("NFKD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .replace(/[^a-z0-9]+/g, "_")
+          .replace(/^_+|_+$/g, "")
+          .slice(0, 40);
 
-      // Record astrologer wallet credit.
+        console.log("Gift sender details:", {
+          senderId: sender.id,
+          senderName,
+        });
 
-      if (astrologerCoins > 0) {
-        await tx.walletTransaction.create({
-          data: {
-            astrologerWalletId: astrologerWallet.id,
-            type: "CREDIT",
-            coins: astrologerCoins,
-            amount: astrologerCoins,
-            updatedBalance: astrologerWallet.balanceCoins,
-            description: `Live gift earnings: ${gift.name} x${quantity}`,
+        // =====================================================
+        // 3. VALIDATE THE LIVE STREAM
+        // =====================================================
+
+        const stream = await prisma.liveStream.findFirst({
+          where: {
+            id: streamId,
+            status: "LIVE",
           },
         });
-      }
 
-      // Record live gift transaction.
-      //
-      // IMPORTANT:
-      // Verify that LiveGiftTransaction.giftId references
-      // the Gift model in your Prisma schema.
-      // If it still references LiveGift, update that relation
-      // before using IDs from the Gift table.
+        if (!stream) {
+          throw new Error("Live stream is not active");
+        }
 
-      const giftTransaction = await tx.liveGiftTransaction.create({
-        data: {
-          streamId: stream.id,
-          senderId: user.id,
-          astrologerId: stream.astrologerId,
+        if (stream.astrologerId === user.id) {
+          throw new Error("Astrologers cannot send gifts to their own stream");
+        }
+
+        if (!stream.chatRoomId) {
+          throw new Error("Live stream Chat room is not configured");
+        }
+
+        // =====================================================
+        // 4. FETCH GIFT FROM THE Gift MODEL
+        // =====================================================
+
+        const gift = await prisma.gift.findFirst({
+          where: {
+            id: giftId,
+            status: "active",
+          },
+          select: {
+            id: true,
+            name: true,
+            amount: true,
+            image: true,
+            status: true,
+          },
+        });
+
+        if (!gift) {
+          throw new Error("Gift not found or inactive");
+        }
+
+        // Gift.amount replaces LiveGift.price.
+        // Gift.image replaces LiveGift.icon.
+
+        if (!Number.isSafeInteger(gift.amount) || gift.amount <= 0) {
+          throw new Error("Invalid gift amount");
+        }
+
+        const totalCoins = gift.amount * quantity;
+
+        if (!Number.isSafeInteger(totalCoins) || totalCoins <= 0) {
+          throw new Error("Invalid total gift amount");
+        }
+
+        console.log("Gift details:", {
           giftId: gift.id,
+          giftName: gift.name,
+          giftAmount: gift.amount,
+          giftImage: gift.image,
           quantity,
           totalCoins,
-          status: "SUCCESS",
-        },
-      });
+        });
 
-      return {
-        giftTransaction,
-        userBalance: userWallet.balanceCoins,
-        astrologerBalance: astrologerWallet.balanceCoins,
-        totalCoins,
-        astrologerCoins,
-        commissionCoins,
-      };
-    });
+        // =====================================================
+        // 5. FETCH ASTROLOGER COMMISSION
+        // =====================================================
 
-    // =====================================================
-    // 7. SEND AGORA CHAT GIFT NOTIFICATION
-    // =====================================================
+        const commissionConfig = await prisma.astrologerPricing.findUnique({
+          where: {
+            astrologerId_type: {
+              astrologerId: stream.astrologerId,
+              type: "GIFT_COMMISSION",
+            },
+          },
+        });
 
-    // Notification failure must not roll back the gift.
+        const commissionPercent =
+          commissionConfig?.isActive &&
+          commissionConfig.commissionPercent != null
+            ? commissionConfig.commissionPercent
+            : 0;
 
-    try {
-      await sendAgoraChatRoomGiftNotification({
-        chatRoomId: stream.chatRoomId,
+        if (
+          !Number.isFinite(commissionPercent) ||
+          commissionPercent < 0 ||
+          commissionPercent > 100
+        ) {
+          throw new Error("Invalid astrologer gift commission");
+        }
 
-        // Must match the username registered with Agora Chat.
-        senderUsername: `user_${user.id}`,
+        // Calculate astrologer earnings and platform commission.
 
-        senderId: user.id,
-        senderName,
+        const astrologerCoins = Math.floor(
+          (totalCoins * (100 - commissionPercent)) / 100,
+        );
 
-        giftName: gift.name,
+        const commissionCoins = totalCoins - astrologerCoins;
 
-        // Gift.image replaces LiveGift.icon.
-        icon: gift.image,
+        console.log("Gift calculation:", {
+          giftName: gift.name,
+          quantity,
+          totalCoins,
+          commissionPercent,
+          astrologerCoins,
+          commissionCoins,
+        });
 
-        quantity,
-        totalCoins,
-      });
+        // =====================================================
+        // 6. ATOMIC WALLET UPDATES AND TRANSACTION RECORDS
+        // =====================================================
 
-      console.log("Agora gift notification sent successfully:", {
-        senderName,
-        giftName: gift.name,
-        quantity,
-        totalCoins,
-      });
-    } catch (error) {
-      console.error("Agora gift notification failed:", {
-        message: error.message,
-        response: error.response?.data,
-        senderName,
-        chatRoomId: stream.chatRoomId,
-      });
-    }
+        const result = await prisma.$transaction(async (tx) => {
+          // Create user wallet if it does not exist.
 
-    // =====================================================
-    // 8. RETURN RESPONSE
-    // =====================================================
+          await tx.userWallet.upsert({
+            where: {
+              userId: user.id,
+            },
+            create: {
+              userId: user.id,
+              balanceCoins: 0,
+            },
+            update: {},
+          });
 
-    return {
-      success: true,
-      message: "Gift sent successfully",
-      giftId: gift.id,
-      giftName: gift.name,
+          // Create astrologer wallet if it does not exist.
 
-      // Keep the existing response field for frontend compatibility.
-      icon: gift.image,
+          await tx.astrologerWallet.upsert({
+            where: {
+              astrologerId: stream.astrologerId,
+            },
+            create: {
+              astrologerId: stream.astrologerId,
+              balanceCoins: 0,
+            },
+            update: {},
+          });
 
-      quantity,
-      totalCoins,
-      astrologerCoins: result.astrologerCoins,
-      commissionCoins: result.commissionCoins,
-      userBalance: result.userBalance,
-      astrologerBalance: result.astrologerBalance,
-      transactionId: result.giftTransaction.id,
-    };
-  } catch (error) {
-    console.error("sendLiveGift failed:", error.message);
-    throw error;
-  }
-},
+          // Debit the user's wallet only if sufficient coins exist.
+
+          const debit = await tx.userWallet.updateMany({
+            where: {
+              userId: user.id,
+              balanceCoins: {
+                gte: totalCoins,
+              },
+            },
+            data: {
+              balanceCoins: {
+                decrement: totalCoins,
+              },
+            },
+          });
+
+          if (debit.count !== 1) {
+            throw new Error("Insufficient wallet balance");
+          }
+
+          // Fetch updated user wallet.
+
+          const userWallet = await tx.userWallet.findUniqueOrThrow({
+            where: {
+              userId: user.id,
+            },
+          });
+
+          // Credit astrologer wallet.
+
+          await tx.astrologerWallet.update({
+            where: {
+              astrologerId: stream.astrologerId,
+            },
+            data: {
+              balanceCoins: {
+                increment: astrologerCoins,
+              },
+              totalEarned: {
+                increment: astrologerCoins,
+              },
+              totalCommission: {
+                increment: commissionCoins,
+              },
+            },
+          });
+
+          // Fetch updated astrologer wallet.
+
+          const astrologerWallet = await tx.astrologerWallet.findUniqueOrThrow({
+            where: {
+              astrologerId: stream.astrologerId,
+            },
+          });
+
+          // Record user wallet debit.
+
+          await tx.walletTransaction.create({
+            data: {
+              userWalletId: userWallet.id,
+              type: "DEBIT",
+              coins: totalCoins,
+              amount: totalCoins,
+              updatedBalance: userWallet.balanceCoins,
+              description: `Live gift: ${gift.name} x${quantity}`,
+            },
+          });
+
+          // Record astrologer wallet credit.
+
+          if (astrologerCoins > 0) {
+            await tx.walletTransaction.create({
+              data: {
+                astrologerWalletId: astrologerWallet.id,
+                type: "CREDIT",
+                coins: astrologerCoins,
+                amount: astrologerCoins,
+                updatedBalance: astrologerWallet.balanceCoins,
+                description: `Live gift earnings: ${gift.name} x${quantity}`,
+              },
+            });
+          }
+
+          // Record live gift transaction.
+          //
+          // IMPORTANT:
+          // Verify that LiveGiftTransaction.giftId references
+          // the Gift model in your Prisma schema.
+          // If it still references LiveGift, update that relation
+          // before using IDs from the Gift table.
+
+          const giftTransaction = await tx.liveGiftTransaction.create({
+            data: {
+              streamId: stream.id,
+              senderId: user.id,
+              astrologerId: stream.astrologerId,
+              giftId: gift.id,
+              quantity,
+              totalCoins,
+              status: "SUCCESS",
+            },
+          });
+
+          return {
+            giftTransaction,
+            userBalance: userWallet.balanceCoins,
+            astrologerBalance: astrologerWallet.balanceCoins,
+            totalCoins,
+            astrologerCoins,
+            commissionCoins,
+          };
+        });
+
+        // =====================================================
+        // 7. SEND AGORA CHAT GIFT NOTIFICATION
+        // =====================================================
+
+        // Notification failure must not roll back the gift.
+
+        try {
+          await sendAgoraChatRoomGiftNotification({
+            chatRoomId: stream.chatRoomId,
+
+            // Must match the username registered with Agora Chat.
+            senderUsername: `user_${user.id}`,
+
+            senderId: user.id,
+            senderName,
+
+            giftName: gift.name,
+
+            // Gift.image replaces LiveGift.icon.
+            icon: gift.image,
+
+            quantity,
+            totalCoins,
+          });
+
+          console.log("Agora gift notification sent successfully:", {
+            senderName,
+            giftName: gift.name,
+            quantity,
+            totalCoins,
+          });
+        } catch (error) {
+          console.error("Agora gift notification failed:", {
+            message: error.message,
+            response: error.response?.data,
+            senderName,
+            chatRoomId: stream.chatRoomId,
+          });
+        }
+
+        // =====================================================
+        // 8. RETURN RESPONSE
+        // =====================================================
+
+        return {
+          success: true,
+          message: "Gift sent successfully",
+          giftId: gift.id,
+          giftName: gift.name,
+
+          // Keep the existing response field for frontend compatibility.
+          icon: gift.image,
+
+          quantity,
+          totalCoins,
+          astrologerCoins: result.astrologerCoins,
+          commissionCoins: result.commissionCoins,
+          userBalance: result.userBalance,
+          astrologerBalance: result.astrologerBalance,
+          transactionId: result.giftTransaction.id,
+        };
+      } catch (error) {
+        console.error("sendLiveGift failed:", error.message);
+        throw error;
+      }
+    },
     leaveLive: async (_, { channelName }, context) => {
       try {
         // 1. Validate authentication
