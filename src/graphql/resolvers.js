@@ -4686,7 +4686,7 @@ getRechargeInvoice: async (_, { transactionId }) => {
       }
 
       if (chatTime < 5 && pricePerMin != 0) {
-        throw new Error("balance must be minimum 5 minutes");
+        throw new Error("A minimum balance sufficient for at least 5 minutes is required. Recharge Now !");
       }
 
       const intake = await prisma.intake.create({
