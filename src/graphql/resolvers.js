@@ -3524,17 +3524,19 @@ module.exports = {
 
             try {
               if (payment.serviceType === "PUJA") {
+                // PujaService uses "title", not "name"
                 const pujaService = await prisma.pujaService.findUnique({
                   where: {
                     id: payment.serviceId,
                   },
                   select: {
-                    name: true,
+                    title: true,
                   },
                 });
 
-                serviceName = pujaService?.name ?? null;
+                serviceName = pujaService?.title ?? null;
               } else if (payment.serviceType === "SERVICE") {
+                // Service model uses "name"
                 const service = await prisma.service.findUnique({
                   where: {
                     id: payment.serviceId,
@@ -3547,9 +3549,8 @@ module.exports = {
                 serviceName = service?.name ?? null;
               }
             } catch (serviceError) {
-              // Keep the payment record even if the related service is unavailable.
               console.error(
-                `Failed to fetch service name for serviceId ${payment.serviceId}:`,
+                `Failed to fetch service name for serviceType=${payment.serviceType}, serviceId=${payment.serviceId}:`,
                 serviceError.message,
               );
             }
