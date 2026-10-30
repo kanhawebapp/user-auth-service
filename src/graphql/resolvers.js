@@ -6609,7 +6609,7 @@ module.exports = {
               coins: astrologerEarning,
               amount: astrologerEarning,
 
-              description: `Gift Received - ${giftname} (${commissionPercent}% commission)`,
+              description: `Gift Received - ${giftname}`,
             },
           });
 
