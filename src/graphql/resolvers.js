@@ -4271,6 +4271,71 @@ module.exports = {
         throw new Error(error.message || "Failed to fetch recharge invoice");
       }
     },
+
+    getLiveStatus: async (_, { chatRoomId }, { user }) => {
+      try {
+        // Authentication
+        if (!user?.id) {
+          throw new Error("Unauthorized: Please login to continue");
+        }
+
+        // Validate chatRoomId
+        if (!chatRoomId) {
+          throw new Error("Chat room ID is required");
+        }
+
+        // Fetch live session using chatRoomId
+        const liveData = await prisma.liveStream.findFirst({
+          where: {
+            chatRoomId: String(chatRoomId),
+          },
+          select: {
+            id: true,
+            astrologerId: true,
+            title: true,
+            channelName: true,
+            chatRoomId: true,
+            status: true,
+            scheduledAt: true,
+            scheduledEndAt: true,
+            startedAt: true,
+            endedAt: true,
+            totalViews: true,
+            createdAt: true,
+          },
+        });
+
+        if (!liveData) {
+          return {
+            success: false,
+            message: "Live session not found",
+            data: null,
+          };
+        }
+
+        return {
+          success: true,
+          message: "Live status fetched successfully",
+          data: {
+            id: liveData.id,
+            astrologerId: liveData.astrologerId,
+            title: liveData.title,
+            channelName: liveData.channelName,
+            chatRoomId: liveData.chatRoomId,
+            status: liveData.status,
+            scheduledAt: liveData.scheduledAt?.toISOString() ?? null,
+            scheduledEndAt: liveData.scheduledEndAt?.toISOString() ?? null,
+            startedAt: liveData.startedAt?.toISOString() ?? null,
+            endedAt: liveData.endedAt?.toISOString() ?? null,
+            totalViews: liveData.totalViews,
+            createdAt: liveData.createdAt?.toISOString() ?? null,
+          },
+        };
+      } catch (error) {
+        console.error("getLiveStatus error:", error);
+        throw new Error(error.message || "Failed to fetch live status");
+      }
+    },
   },
   //----------------start code for mutation ----------------------------
   Mutation: {

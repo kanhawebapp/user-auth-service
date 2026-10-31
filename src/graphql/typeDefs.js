@@ -1839,6 +1839,26 @@ type MyBookedPujaServiceResponse {
   limit: Int!
   data: [MyBookedPujaService!]!
 }
+  type LiveStatusData {
+  id: ID
+  astrologerId: String
+  title: String
+  channelName: String
+  chatRoomId: String
+  status: String
+  scheduledAt: String
+  scheduledEndAt: String
+  startedAt: String
+  endedAt: String
+  totalViews: Int
+  createdAt: String
+}
+
+type LiveStatusResponse {
+  success: Boolean!
+  message: String!
+  data: LiveStatusData
+}
 
 
 
@@ -1980,6 +2000,9 @@ type MyBookedPujaServiceResponse {
     startDate: String
     endDate: String
   ): MyBookedPujaServiceResponse!
+
+  getLiveStatus(chatRoomId: String!): LiveStatusResponse!
+  
   }
 
   type Mutation {
