@@ -152,7 +152,7 @@ module.exports = gql`
     sessionId: String
 
     type: String
-    coins: Int
+    coins: Float
     amount: Float
     description: String
 
@@ -185,7 +185,7 @@ module.exports = gql`
     name: String!
     description: String
     price: Float!
-    coins: Int!
+    coins: Float!
     talktime: Int!
     hideAfterFirstRecharge: Boolean!
     isFirstTimeOffer: Boolean!
@@ -197,7 +197,7 @@ module.exports = gql`
     name: String!
     description: String
     price: Float!
-    coins: Int!
+    coins: Float!
     talktime: Int!
     validityDays: Int!
     hideAfterFirstRecharge: Boolean!
@@ -317,9 +317,9 @@ module.exports = gql`
     ratePerMin: Int
     durationSec: Int
 
-    coinsDeducted: Int
-    coinsEarned: Int
-    commission: Int
+    coinsDeducted: Float
+    coinsEarned: Float
+    commission: Float
 
     startedAt: String
     endedAt: String
@@ -1446,9 +1446,9 @@ module.exports = gql`
     giftName: String!
     icon: String!
     quantity: Int!
-    totalCoins: Int!
-    astrologerCoins: Int!
-    commissionCoins: Int!
+    totalCoins: Float!
+    astrologerCoins: Float!
+    commissionCoins: Float!
     userBalance: Int!
     astrologerBalance: Int!
     transactionId: ID!
@@ -1703,7 +1703,7 @@ type RechargePaymentLog {
   rechargePackDescription: String
 
   amount: Float
-  coins: Int
+  coins: Float
 
   provider: String
   razorpayOrderId: String
@@ -1760,7 +1760,7 @@ type RechargeInvoice {
   rechargePackId: String
   rechargePackName: String
   rechargePackDescription: String
-  coins: Int
+  coins: Float
 
   # Invoice amounts
   amount: Float

@@ -680,7 +680,7 @@ model RechargePack {
   name          String
   description   String?
   price         Float
-  coins         Int
+  coins         Float
   talktime      Int
   validityDays  Int
   isActive      Boolean             @default(true)
@@ -718,11 +718,11 @@ model AstrologerWallet {
   astrologerId   String              @unique
   astrologer     Astrologer          @relation(fields: [astrologerId], references: [id], onDelete: Cascade)
   balanceCoins   Float               @default(0)
-  totalEarned    Int                 @default(0)
+  totalEarned    Float                 @default(0)
   totalCommission Float @default(0)
   totalPaid Float @default(0)
   pendingAmount Float @default(0)
-  totalWithdrawn Int                 @default(0)
+  totalWithdrawn Float                 @default(0)
   withdrawals    Withdrawal[]
   createdAt      DateTime            @default(now())
   updatedAt      DateTime            @updatedAt
@@ -751,7 +751,7 @@ model WalletTransaction {
   payment   Payment? @relation(fields: [paymentId], references: [id])
 
   type        TransactionType
-  coins       Int
+  coins       Float
   amount      Float?
   description String?
   updatedBalance Float?
@@ -773,7 +773,7 @@ model Withdrawal {
   astrologerWallet   AstrologerWallet @relation(fields: [astrologerWalletId], references: [id])
 
   amount Float
-  coins  Int
+  coins  Float
 
   status WithdrawalStatus
 
@@ -844,7 +844,7 @@ model Payment {
   paymentOrder PaymentOrder @relation(fields:[paymentOrderId],references:[id])
 
   amount Float
-  coins Int
+  coins Float
 
   provider PaymentProvider
 
@@ -907,7 +907,7 @@ model PaymentOrder {
   originalAmount Float
   discount Float @default(0)
   amount Float
-  coins Int
+  coins Float
 
   status PaymentOrderStatus @default(CREATED)
 
@@ -1622,7 +1622,7 @@ model LiveGiftTransaction {
   giftId       String
 
   quantity  Int      @default(1)
-  totalCoins Int
+  totalCoins Float
 
   status    String   @default("SUCCESS")
   createdAt DateTime @default(now())
