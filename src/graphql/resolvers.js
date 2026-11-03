@@ -7509,7 +7509,8 @@ module.exports = {
     },
 
     createPujaBooking: async (_, { input }, context) => {
-      if (!context?.user) {
+       const user = context?.user;
+       if (!user?.id) {
         throw new GraphQLError("Please login to book a puja.");
       }
 
