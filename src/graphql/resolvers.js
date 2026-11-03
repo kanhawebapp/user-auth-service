@@ -1,7 +1,7 @@
 const prisma = require("../config/prisma");
 const redis = require("../config/redis");
 const cookie = require("cookie");
-import { GraphQLError } from "graphql";
+const { GraphQLError } = require("graphql");
 const {
   sendOTPService,
   verifyOTPService,
