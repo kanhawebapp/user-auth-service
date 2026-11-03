@@ -7508,8 +7508,8 @@ module.exports = {
       });
     },
 
-    createPujaBooking: async (_, { input }, { user }) => {
-      if (!user?.id) {
+    createPujaBooking: async (_, { input }, context) => {
+      if (!context?.user) {
         throw new GraphQLError("Please login to book a puja.");
       }
 
