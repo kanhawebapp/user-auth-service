@@ -5181,7 +5181,10 @@ module.exports = {
           });
         }
 
+        console.log("uploadDir-------------:",uploadDir);
+
         const uploadPath = path.join(uploadDir, newFileName);
+        console.log("uploadPath-------------:",uploadPath);
 
         await new Promise((resolve, reject) => {
           const stream = createReadStream();
@@ -5213,6 +5216,7 @@ module.exports = {
 
        // const fileUrl = `${process.env.BASE_URL}/v2/uploads/call-recordings/${newFileName}?token=${fileToken}`;
        const fileUrl = `${process.env.BASE_URL}/chat/uploads/call-recordings/${newFileName}`;
+       console.log("fileUrl-------------:",fileUrl);
 
         let sessionId = null;
 
