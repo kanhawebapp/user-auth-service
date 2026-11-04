@@ -5170,7 +5170,8 @@ module.exports = {
 
         const newFileName = `call-${roomId}-${timestamp}.${ext}`;
 
-        const uploadDir = path.join("/shared/chat-uploads", "call-recordings");
+        //const uploadDir = path.join("/shared/chat-uploads", "call-recordings");
+        const uploadDir = "/var/www/chat-uploads/call-recordings";
 
         // Create directory if it doesn't exist
         if (!fs.existsSync(uploadDir)) {
@@ -5210,7 +5211,8 @@ module.exports = {
           "base64",
         );
 
-        const fileUrl = `${process.env.BASE_URL}/v2/uploads/call-recordings/${newFileName}?token=${fileToken}`;
+       // const fileUrl = `${process.env.BASE_URL}/v2/uploads/call-recordings/${newFileName}?token=${fileToken}`;
+       const fileUrl = `${process.env.BASE_URL}/chat/uploads/call-recordings/${newFileName}`;
 
         let sessionId = null;
 
@@ -5247,7 +5249,8 @@ module.exports = {
 
             // IMPORTANT:
             // Store SERVER-MOUNTED PATH
-            filePath: `/var/www/chat-uploads/call-recordings/${newFileName}`,
+            //filePath: `/var/www/chat-uploads/call-recordings/${newFileName}`,
+            filePath: uploadPath,
 
             fileSize: fileSize,
 
