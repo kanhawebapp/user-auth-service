@@ -110,7 +110,7 @@ module.exports = gql`
     isEligibleAudio: Boolean
     tags: String
     vtags: String
-
+    createdAt: String
     pricing: [AstrologerPricing]
 
     reviews: [Review]
@@ -1440,28 +1440,28 @@ module.exports = gql`
     couponCode: String!
   }
   type SendLiveGiftResponse {
-  success: Boolean!
-  message: String!
-  giftId: ID!
-  giftName: String!
-  icon: String!
-  quantity: Int!
-  totalCoins: Float!
-  astrologerCoins: Float!
-  commissionCoins: Float!
-  userBalance: Float!
-  astrologerBalance: Float!
-  transactionId: ID!
-}
+    success: Boolean!
+    message: String!
+    giftId: ID!
+    giftName: String!
+    icon: String!
+    quantity: Int!
+    totalCoins: Float!
+    astrologerCoins: Float!
+    commissionCoins: Float!
+    userBalance: Int!
+    astrologerBalance: Int!
+    transactionId: ID!
+  }
   #-------------------live gift----------
   type LiveGift {
-  id: ID!
-  name: String!
-  price: Float!
-  image: String
-  icon: String
-  isActive: Boolean!
-}
+    id: ID!
+    name: String!
+    price: Float!
+    image: String
+    icon: String
+    isActive: Boolean!
+  }
 
   type LeaveLiveResponse {
     success: Boolean!
@@ -1639,228 +1639,225 @@ module.exports = gql`
   }
 
   type ServicesInvoice {
-  id: ID!
-  invoiceNo: String
+    id: ID!
+    invoiceNo: String
 
-  transactionId: String
-  razorpayOrderId: String
-  razorpayPaymentId: String
+    transactionId: String
+    razorpayOrderId: String
+    razorpayPaymentId: String
 
-  amount: Float
-  discount: Float
-  taxableAmount: Float
+    amount: Float
+    discount: Float
+    taxableAmount: Float
 
-  sgst: Float
-  cgst: Float
-  igst: Float
+    sgst: Float
+    cgst: Float
+    igst: Float
 
-  sgstRate: Float
-  cgstRate: Float
-  igstRate: Float
-  gstRate: Float
+    sgstRate: Float
+    cgstRate: Float
+    igstRate: Float
+    gstRate: Float
 
-  totalTax: Float
-  totalAmount: Float
-  amountReceived: Float
-  amountInWords: String
+    totalTax: Float
+    totalAmount: Float
+    amountReceived: Float
+    amountInWords: String
 
-  userName: String
-  city: String
-  state: String
-  pincode: String
-  country: String
+    userName: String
+    city: String
+    state: String
+    pincode: String
+    country: String
 
-  placeOfSupply: String
+    placeOfSupply: String
 
-  supplierGSTIN: String
-  supplierAddress: String
-  website: String
-  email: String
+    supplierGSTIN: String
+    supplierAddress: String
+    website: String
+    email: String
 
-  recipientGSTIN: String
+    recipientGSTIN: String
 
-  transactionHistoryUrl: String
+    transactionHistoryUrl: String
 
-  hsnSac: String
-  reverseCharge: Boolean
-  panNumber: String
+    hsnSac: String
+    reverseCharge: Boolean
+    panNumber: String
 
-  serviceType: String
-  serviceId: String
-  serviceName: String
+    serviceType: String
+    serviceId: String
+    serviceName: String
 
-  createdAt: String
-}
+    createdAt: String
+  }
 
-#------start recharge payment Logs------
-type RechargePaymentLog {
-  id: ID!
-  userId: String!
-  rechargePackId: String
-  paymentOrderId: String
+  #------start recharge payment Logs------
+  type RechargePaymentLog {
+    id: ID!
+    userId: String!
+    rechargePackId: String
+    paymentOrderId: String
 
-  rechargePackName: String
-  rechargePackDescription: String
+    rechargePackName: String
+    rechargePackDescription: String
 
-  amount: Float
-  coins: Float
+    amount: Float
+    coins: Float
 
-  provider: String
-  razorpayOrderId: String
-  razorpayPaymentId: String
-  status: String
+    provider: String
+    razorpayOrderId: String
+    razorpayPaymentId: String
+    status: String
 
-  invoiceNo: String
-  taxableAmount: Float
-  gstRate: Float
-  cgst: Float
-  sgst: Float
-  igst: Float
-  totalTax: Float
-  totalAmount: Float
+    invoiceNo: String
+    taxableAmount: Float
+    gstRate: Float
+    cgst: Float
+    sgst: Float
+    igst: Float
+    totalTax: Float
+    totalAmount: Float
 
-  pgChargeRate: Float
-  pgCharge: Float
-  pgIgst: Float
-  pgTotal: Float
-  receivableAmount: Float
+    pgChargeRate: Float
+    pgCharge: Float
+    pgIgst: Float
+    pgTotal: Float
+    receivableAmount: Float
 
-  country: String
-  state: String
-  city: String
-  platform: String
+    country: String
+    state: String
+    city: String
+    platform: String
 
-  createdAt: String
-}
+    createdAt: String
+  }
 
-type RechargePaymentPagination {
-  totalRecords: Int!
-  totalPages: Int!
-  currentPage: Int!
-  limit: Int!
-}
+  type RechargePaymentPagination {
+    totalRecords: Int!
+    totalPages: Int!
+    currentPage: Int!
+    limit: Int!
+  }
 
-type RechargePaymentLogsResponse {
-  success: Boolean!
-  message: String!
-  data: [RechargePaymentLog!]!
-  pagination: RechargePaymentPagination!
-}
-#----------------START INVOICE RECHARGE----------
+  type RechargePaymentLogsResponse {
+    success: Boolean!
+    message: String!
+    data: [RechargePaymentLog!]!
+    pagination: RechargePaymentPagination!
+  }
+  #----------------START INVOICE RECHARGE----------
 
-type RechargeInvoice {
-  id: ID!
-  invoiceNo: String!
-  transactionId: String!
-  paymentOrderId: String
-  razorpayOrderId: String
-  razorpayPaymentId: String
+  type RechargeInvoice {
+    id: ID!
+    invoiceNo: String!
+    transactionId: String!
+    paymentOrderId: String
+    razorpayOrderId: String
+    razorpayPaymentId: String
 
-  # Recharge details
-  rechargePackId: String
-  rechargePackName: String
-  rechargePackDescription: String
-  coins: Float
+    # Recharge details
+    rechargePackId: String
+    rechargePackName: String
+    rechargePackDescription: String
+    coins: Float
 
-  # Invoice amounts
-  amount: Float
-  taxableAmount: Float
-  discount: Float
+    # Invoice amounts
+    amount: Float
+    taxableAmount: Float
+    discount: Float
 
-  # GST details
-  gstRate: Float
-  sgstRate: Float
-  cgstRate: Float
-  igstRate: Float
+    # GST details
+    gstRate: Float
+    sgstRate: Float
+    cgstRate: Float
+    igstRate: Float
 
-  sgst: Float
-  cgst: Float
-  igst: Float
-  totalTax: Float
-  totalAmount: Float
+    sgst: Float
+    cgst: Float
+    igst: Float
+    totalTax: Float
+    totalAmount: Float
 
-  # Payment gateway charges
-  pgChargeRate: Float
-  pgCharge: Float
-  pgIgst: Float
-  pgTotal: Float
-  amountReceived: Float
-  amountInWords: String
+    # Payment gateway charges
+    pgChargeRate: Float
+    pgCharge: Float
+    pgIgst: Float
+    pgTotal: Float
+    amountReceived: Float
+    amountInWords: String
 
-  # Customer details
-  userName: String
-  city: String
-  state: String
-  country: String
-  placeOfSupply: String
-  pincode: String
-  recipientGSTIN: String
+    # Customer details
+    userName: String
+    city: String
+    state: String
+    country: String
+    placeOfSupply: String
+    pincode: String
+    recipientGSTIN: String
 
-  # Supplier details
-  supplierGSTIN: String
-  supplierAddress: String
-  website: String
-  email: String
-  hsnSac: String
-  reverseCharge: Boolean
-  panNumber: String
-  transactionHistoryUrl: String
+    # Supplier details
+    supplierGSTIN: String
+    supplierAddress: String
+    website: String
+    email: String
+    hsnSac: String
+    reverseCharge: Boolean
+    panNumber: String
+    transactionHistoryUrl: String
 
-  # Payment details
-  provider: String
-  status: String
-  platform: String
-  createdAt: String
-}
+    # Payment details
+    provider: String
+    status: String
+    platform: String
+    createdAt: String
+  }
 
+  #-------------START FOR PUJA-------
+  type MyBookedPujaService {
+    id: ID!
+    userId: String!
+    pujaId: String!
+    pujaName: String
+    mantraOptionId: String
+    mantraOptionName: String
+    quantity: Int!
+    unitPrice: Float!
+    totalAmount: Float!
+    paymentStatus: String
+    bookingStatus: String
+    bookingDate: String
+  }
 
-#-------------START FOR PUJA-------
-type MyBookedPujaService {
-  id: ID!
-  userId: String!
-  pujaId: String!
-  pujaName: String
-  mantraOptionId: String
-  mantraOptionName: String
-  quantity: Int!
-  unitPrice: Float!
-  totalAmount: Float!
-  paymentStatus: String
-  bookingStatus: String
-  bookingDate: String
-}
-
-type MyBookedPujaServiceResponse {
-  success: Boolean!
-  message: String
-  total: Int!
-  currentPage: Int!
-  totalPages: Int!
-  limit: Int!
-  data: [MyBookedPujaService!]!
-}
+  type MyBookedPujaServiceResponse {
+    success: Boolean!
+    message: String
+    total: Int!
+    currentPage: Int!
+    totalPages: Int!
+    limit: Int!
+    data: [MyBookedPujaService!]!
+  }
   type LiveStatusData {
-  id: ID
-  astrologerId: String
-  title: String
-  channelName: String
-  chatRoomId: String
-  status: String
-  scheduledAt: String
-  scheduledEndAt: String
-  startedAt: String
-  endedAt: String
-  totalViews: Int
-  createdAt: String
-}
+    id: ID
+    astrologerId: String
+    title: String
+    channelName: String
+    chatRoomId: String
+    status: String
+    scheduledAt: String
+    scheduledEndAt: String
+    startedAt: String
+    endedAt: String
+    totalViews: Int
+    createdAt: String
+  }
 
-type LiveStatusResponse {
-  success: Boolean!
-  message: String!
-  data: LiveStatusData
-}
-
-
+  type LiveStatusResponse {
+    success: Boolean!
+    message: String!
+    data: LiveStatusData
+  }
 
   type Query {
     # puja services
@@ -1983,26 +1980,25 @@ type LiveStatusResponse {
     getServicesInvoice(transactionId: ID!): ServicesInvoice!
 
     getRechargePaymentLogs(
-    page: Int
-    limit: Int
-    startDate: String
-    endDate: String
-    status: String
-  ): RechargePaymentLogsResponse!
+      page: Int
+      limit: Int
+      startDate: String
+      endDate: String
+      status: String
+    ): RechargePaymentLogsResponse!
 
-  getRechargeInvoice(transactionId: ID!): RechargeInvoice
+    getRechargeInvoice(transactionId: ID!): RechargeInvoice
 
-   getMyBookedPujaService(
-    page: Int
-    limit: Int
-    paymentStatus: String
-    bookingStatus: String
-    startDate: String
-    endDate: String
-  ): MyBookedPujaServiceResponse!
+    getMyBookedPujaService(
+      page: Int
+      limit: Int
+      paymentStatus: String
+      bookingStatus: String
+      startDate: String
+      endDate: String
+    ): MyBookedPujaServiceResponse!
 
-  getLiveStatus(chatRoomId: String!): LiveStatusResponse!
-  
+    getLiveStatus(chatRoomId: String!): LiveStatusResponse!
   }
 
   type Mutation {
