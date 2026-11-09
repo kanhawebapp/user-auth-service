@@ -2444,7 +2444,7 @@ module.exports = {
         return {
           astrologers: followedAstrologers.map((follow) => ({
             ...follow.astrologer,
-
+             createdAt: follow.createdAt,
             isChatActive: follow.astrologer.isChatActive,
             isCallActive: follow.astrologer.isCallActive,
             isLiveActive: follow.astrologer.isLiveActive,
@@ -5170,8 +5170,7 @@ module.exports = {
 
         const newFileName = `call-${roomId}-${timestamp}.${ext}`;
 
-        //const uploadDir = path.join("/shared/chat-uploads", "call-recordings");
-        const uploadDir = "/var/www/chat-uploads/call-recordings";
+        const uploadDir = path.join("/shared/chat-uploads", "call-recordings");
 
         // Create directory if it doesn't exist
         if (!fs.existsSync(uploadDir)) {
@@ -5181,10 +5180,7 @@ module.exports = {
           });
         }
 
-        console.log("uploadDir-------------:",uploadDir);
-
         const uploadPath = path.join(uploadDir, newFileName);
-        console.log("uploadPath-------------:",uploadPath);
 
         await new Promise((resolve, reject) => {
           const stream = createReadStream();
@@ -5214,9 +5210,7 @@ module.exports = {
           "base64",
         );
 
-       // const fileUrl = `${process.env.BASE_URL}/v2/uploads/call-recordings/${newFileName}?token=${fileToken}`;
-       const fileUrl = `${process.env.BASE_URL}/chat/uploads/call-recordings/${newFileName}`;
-       console.log("fileUrl-------------:",fileUrl);
+        const fileUrl = `${process.env.BASE_URL}/v2/uploads/call-recordings/${newFileName}?token=${fileToken}`;
 
         let sessionId = null;
 
@@ -5253,8 +5247,7 @@ module.exports = {
 
             // IMPORTANT:
             // Store SERVER-MOUNTED PATH
-            //filePath: `/var/www/chat-uploads/call-recordings/${newFileName}`,
-            filePath: uploadPath,
+            filePath: `/var/www/chat-uploads/call-recordings/${newFileName}`,
 
             fileSize: fileSize,
 
