@@ -5171,6 +5171,7 @@ module.exports = {
         const newFileName = `call-${roomId}-${timestamp}.${ext}`;
 
         const uploadDir = path.join("/shared/chat-uploads", "call-recordings");
+        console.log("------uploadDir-----------",uploadDir);
 
         // Create directory if it doesn't exist
         if (!fs.existsSync(uploadDir)) {
@@ -5181,6 +5182,7 @@ module.exports = {
         }
 
         const uploadPath = path.join(uploadDir, newFileName);
+        console.log("-----------------uploadPath--------:",uploadPath);
 
         await new Promise((resolve, reject) => {
           const stream = createReadStream();
@@ -5211,6 +5213,7 @@ module.exports = {
         );
 
         const fileUrl = `${process.env.BASE_URL}/v2/uploads/call-recordings/${newFileName}?token=${fileToken}`;
+        console.log("fileUrl-------fileUrl----:",fileUrl);
 
         let sessionId = null;
 

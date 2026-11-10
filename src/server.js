@@ -28,10 +28,19 @@ async function startServer() {
     }),
   );
 
+  // app.use(
+  //   "/uploads",
+  //   require("express").static(path.join(__dirname, "uploads")),
+  // );
+
   app.use(
-    "/uploads",
-    require("express").static(path.join(__dirname, "uploads")),
-  );
+  "/uploads",
+  express.static("/shared/chat-uploads", {
+    index: false,
+    dotfiles: "deny",
+  }),
+);
+
   app.use(
     "/profile/uploads",
     express.static(path.join(__dirname, "uploads", "profile")),
