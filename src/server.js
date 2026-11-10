@@ -32,6 +32,7 @@ async function startServer() {
   //   "/uploads",
   //   require("express").static(path.join(__dirname, "uploads")),
   // );
+  
 
   app.use(
   "/uploads",
