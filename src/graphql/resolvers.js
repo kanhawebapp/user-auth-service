@@ -19,11 +19,13 @@ const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID,
   key_secret: process.env.RAZORPAY_KEY_SECRET,
 });
+
+const { randomInt } = require("crypto");
 const { sendAgoraChatRoomGiftNotification } = require("../utils/agoraToken");
 const {
   generateRtcToken,
-  createAgoraChatUser,
   generateChatToken,
+  createAgoraChatUser,
 } = require("../utils/agoraToken");
 // Helper to log events in MongoDB
 async function logEvent({ userId, action, details }) {
@@ -2444,7 +2446,7 @@ module.exports = {
         return {
           astrologers: followedAstrologers.map((follow) => ({
             ...follow.astrologer,
-             createdAt: follow.createdAt,
+            createdAt: follow.createdAt,
             isChatActive: follow.astrologer.isChatActive,
             isCallActive: follow.astrologer.isCallActive,
             isLiveActive: follow.astrologer.isLiveActive,
@@ -2872,9 +2874,12 @@ module.exports = {
     },
     getUpcomingLives: async (_, { page = 1, limit = 10 }) => {
       try {
-        const skip = (page - 1) * limit;
+        const safePage = Math.max(1, Number(page) || 1);
+        const safeLimit = Math.min(50, Math.max(1, Number(limit) || 10));
+        const skip = (safePage - 1) * safeLimit;
 
         const where = {
+          isDeleted: false,
           status: {
             in: ["LIVE", "SCHEDULED"],
           },
@@ -2883,7 +2888,6 @@ module.exports = {
         const [data, totalCount] = await Promise.all([
           prisma.liveStream.findMany({
             where,
-
             include: {
               astrologer: {
                 select: {
@@ -2895,25 +2899,19 @@ module.exports = {
                 },
               },
             },
-
-            orderBy: {
-              scheduledAt: "asc",
-            },
-
+            orderBy: [{ scheduledAt: "asc" }, { createdAt: "desc" }],
             skip,
-            take: limit,
+            take: safeLimit,
           }),
 
-          prisma.liveStream.count({
-            where,
-          }),
+          prisma.liveStream.count({ where }),
         ]);
 
         return {
           data,
           totalCount,
-          currentPage: page,
-          totalPages: Math.ceil(totalCount / limit),
+          currentPage: safePage,
+          totalPages: Math.ceil(totalCount / safeLimit),
         };
       } catch (error) {
         console.error("getUpcomingLives Error:", error);
@@ -2926,7 +2924,9 @@ module.exports = {
       let currentStep = "initialization";
 
       try {
+        // =====================================================
         // 1. Validate authentication
+        // =====================================================
         currentStep = "user authentication";
 
         if (!user?.id) {
@@ -2941,13 +2941,26 @@ module.exports = {
           throw new Error("A valid channel name is required");
         }
 
-        // 2. Find the active live stream
+        const normalizedChannelName = channelName.trim();
+
+        // =====================================================
+        // 2. Find active live stream
+        // =====================================================
         currentStep = "find live stream";
 
         const stream = await prisma.liveStream.findFirst({
           where: {
-            channelName: channelName.trim(),
+            channelName: normalizedChannelName,
             status: "LIVE",
+            isDeleted: false,
+          },
+          select: {
+            id: true,
+            astrologerId: true,
+            channelName: true,
+            chatRoomId: true,
+            totalViews: true,
+            status: true,
           },
         });
 
@@ -2959,7 +2972,9 @@ module.exports = {
           throw new Error("Chat room is not configured for this live stream");
         }
 
-        // 3. Fetch the logged-in user's name from the User table
+        // =====================================================
+        // 3. Fetch logged-in user details
+        // =====================================================
         currentStep = "fetch user details";
 
         const dbUser = await prisma.user.findUnique({
@@ -2976,10 +2991,13 @@ module.exports = {
           throw new Error("User not found in the database");
         }
 
+        // =====================================================
         // 4. Validate Agora RTC configuration
+        // =====================================================
         currentStep = "validate Agora RTC configuration";
 
         const appId = process.env.AGORA_APP_ID?.trim();
+
         const appCertificate = process.env.AGORA_APP_CERTIFICATE?.trim();
 
         if (!appId || !appCertificate) {
@@ -2988,11 +3006,15 @@ module.exports = {
           );
         }
 
+        // =====================================================
         // 5. Validate Agora Chat configuration
+        // =====================================================
         currentStep = "validate Agora Chat configuration";
 
         const chatAppKey = process.env.AGORA_CHAT_APP_KEY?.trim();
+
         const chatAppId = process.env.AGORA_CHAT_APP_ID?.trim();
+
         const chatAppCertificate =
           process.env.AGORA_CHAT_APP_CERTIFICATE?.trim();
 
@@ -3006,7 +3028,9 @@ module.exports = {
           );
         }
 
-        // 6. Generate a stable Agora Chat user ID from the user's name
+        // =====================================================
+        // 6. Generate stable Agora Chat user ID
+        // =====================================================
         currentStep = "generate Agora Chat user ID";
 
         const normalizedName = (dbUser.name || "user")
@@ -3018,18 +3042,127 @@ module.exports = {
           .replace(/^_+|_+$/g, "")
           .slice(0, 40);
 
-        console.log("user nameeeeeeeeeeeeeeeeeeeeeeeeeeeee", normalizedName);
         const chatUserId = `${normalizedName || "user"}_${dbUser.id}`;
 
-        // 7. Create or verify the Agora Chat user
+        // =====================================================
+        // 7. Create or verify Agora Chat user
+        // =====================================================
         currentStep = "create or verify Agora Chat user";
 
         await createAgoraChatUser(chatUserId);
 
-        // 8. Generate Agora RTC token for the viewer
-        currentStep = "generate RTC token";
+        // =====================================================
+        // 8. Get or create persistent Agora viewer session
+        // =====================================================
+        currentStep = "get or create viewer session";
 
-        const uid = Math.floor(Math.random() * 1000000) + 1;
+        const now = new Date();
+
+        // Keep this expiry aligned with your RTC token validity.
+        const sessionExpiry = new Date(now.getTime() + 60 * 60 * 1000);
+
+        let viewerSession = null;
+
+        const sessionWhere = {
+          liveStreamId_userId: {
+            liveStreamId: stream.id,
+            userId: dbUser.id,
+          },
+        };
+
+        // First check whether this user already has a session
+        // for this live stream.
+        viewerSession = await prisma.liveViewerSession.findUnique({
+          where: sessionWhere,
+        });
+
+        if (
+          viewerSession &&
+          viewerSession.expiresAt &&
+          viewerSession.expiresAt > now
+        ) {
+          // Reuse the existing UID.
+          // This is important when a viewer refreshes the page.
+          console.log("Reusing existing Agora viewer UID", {
+            liveStreamId: stream.id,
+            userId: dbUser.id,
+            uid: viewerSession.agoraUid,
+          });
+
+          viewerSession = await prisma.liveViewerSession.update({
+            where: sessionWhere,
+            data: {
+              expiresAt: sessionExpiry,
+            },
+          });
+        } else {
+          // Session does not exist or has expired.
+          // Generate a new UID and persist it.
+          let sessionCreated = false;
+          let lastSessionError = null;
+
+          for (let attempt = 1; attempt <= 5; attempt++) {
+            const newUid = Math.floor(Math.random() * 1000000) + 1;
+
+            try {
+              if (viewerSession) {
+                // Existing session expired: replace its UID.
+                viewerSession = await prisma.liveViewerSession.update({
+                  where: sessionWhere,
+                  data: {
+                    agoraUid: newUid,
+                    expiresAt: sessionExpiry,
+                  },
+                });
+              } else {
+                // First-time viewer: create a new session.
+                viewerSession = await prisma.liveViewerSession.create({
+                  data: {
+                    liveStreamId: stream.id,
+                    userId: dbUser.id,
+                    agoraUid: newUid,
+                    expiresAt: sessionExpiry,
+                  },
+                });
+              }
+
+              sessionCreated = true;
+              break;
+            } catch (error) {
+              lastSessionError = error;
+
+              // P2002 indicates a unique constraint collision.
+              // Try another UID if the generated UID is already used.
+              if (error.code === "P2002") {
+                console.warn(
+                  `Agora UID collision. Retrying attempt ${attempt}/5`,
+                );
+                continue;
+              }
+
+              throw error;
+            }
+          }
+
+          if (!sessionCreated || !viewerSession) {
+            throw (
+              lastSessionError ||
+              new Error("Unable to create Agora viewer session")
+            );
+          }
+        }
+
+        // Always use the UID stored in the database.
+        const uid = viewerSession.agoraUid;
+
+        if (!Number.isInteger(uid) || uid <= 0) {
+          throw new Error("Invalid persisted Agora viewer UID");
+        }
+
+        // =====================================================
+        // 9. Generate Agora RTC subscriber token
+        // =====================================================
+        currentStep = "generate RTC subscriber token";
 
         const rtcToken = generateRtcToken({
           channelName: stream.channelName,
@@ -3041,7 +3174,9 @@ module.exports = {
           throw new Error("Failed to generate Agora RTC token");
         }
 
-        // 9. Generate Agora Chat user token
+        // =====================================================
+        // 10. Generate Agora Chat user token
+        // =====================================================
         currentStep = "generate Agora Chat user token";
 
         const chatToken = await generateChatToken(chatUserId);
@@ -3050,9 +3185,9 @@ module.exports = {
           throw new Error("Failed to generate Agora Chat user token");
         }
 
-        // 10. Increment the total views after successfully preparing
-        // the RTC and Chat credentials.
-
+        // =====================================================
+        // 11. Increment total views
+        // =====================================================
         currentStep = "increment live stream views";
 
         const updatedStream = await prisma.liveStream.update({
@@ -3069,17 +3204,18 @@ module.exports = {
           },
         });
 
-        // 11. Return data required by the viewer frontend.
-
+        // =====================================================
+        // 12. Return viewer credentials
+        // =====================================================
         currentStep = "prepare joinLive response";
 
         return {
           id: stream.id,
 
-          // Astrologer details for Follow / Unfollow
+          // Astrologer details
           astrologerId: stream.astrologerId,
 
-          // Stream information
+          // Live stream information
           channelName: stream.channelName,
 
           // Total views
@@ -3102,6 +3238,7 @@ module.exports = {
           step: currentStep,
           channelName,
           userId: user?.id,
+          errorCode: error.code,
           httpStatus: error.response?.status,
           agoraError: error.response?.data?.error,
           agoraErrorDescription: error.response?.data?.error_description,
@@ -4337,6 +4474,96 @@ module.exports = {
         throw new Error(error.message || "Failed to fetch live status");
       }
     },
+
+    // ======================================================
+    // VIEWER CHECKS THEIR INTERACTION STATUS
+    // ======================================================
+
+    getMyLiveInteraction: async (_, { liveStreamId }, { user }) => {
+      try {
+        if (!user?.id) {
+          throw new Error("Unauthorized");
+        }
+
+        if (!liveStreamId) {
+          throw new Error("Live stream ID is required");
+        }
+
+        const request = await prisma.liveInteractionRequest.findFirst({
+          where: {
+            liveStreamId,
+            userId: user.id,
+            status: {
+              in: ["PENDING", "ACCEPTED"],
+            },
+          },
+          orderBy: {
+            createdAt: "desc",
+          },
+        });
+
+        if (!request) {
+          return null;
+        }
+
+        const stream = await prisma.liveStream.findFirst({
+          where: {
+            id: liveStreamId,
+            status: "LIVE",
+            isDeleted: false,
+          },
+          select: {
+            channelName: true,
+          },
+        });
+
+        if (!stream) {
+          throw new Error("Live stream has ended");
+        }
+
+        const response = {
+          request,
+          appId: process.env.AGORA_APP_ID?.trim(),
+          channelName: stream.channelName,
+          uid: request.agoraUid,
+          rtcToken: null,
+        };
+
+        if (request.status === "ACCEPTED") {
+          const viewerSession = await prisma.liveViewerSession.findUnique({
+            where: {
+              liveStreamId_userId: {
+                liveStreamId,
+                userId: user.id,
+              },
+            },
+          });
+
+          if (
+            !viewerSession ||
+            viewerSession.expiresAt <= new Date() ||
+            viewerSession.agoraUid !== request.agoraUid
+          ) {
+            throw new Error(
+              "Viewer session expired. Please rejoin the live stream.",
+            );
+          }
+
+          // Same channel + same UID, but publisher privileges.
+          response.rtcToken = generateRtcToken({
+            channelName: stream.channelName,
+            uid: request.agoraUid,
+            role: "publisher",
+          });
+        }
+
+        return response;
+      } catch (error) {
+        console.error("getMyLiveInteraction failed:", error.message);
+
+        throw new Error(error.message || "Unable to fetch interaction status");
+      }
+    },
   },
   //----------------start code for mutation ----------------------------
   Mutation: {
@@ -5171,7 +5398,7 @@ module.exports = {
         const newFileName = `call-${roomId}-${timestamp}.${ext}`;
 
         const uploadDir = path.join("/shared/chat-uploads", "call-recordings");
-        console.log("------uploadDir-----------",uploadDir);
+        console.log("------uploadDir-----------", uploadDir);
 
         // Create directory if it doesn't exist
         if (!fs.existsSync(uploadDir)) {
@@ -5182,7 +5409,7 @@ module.exports = {
         }
 
         const uploadPath = path.join(uploadDir, newFileName);
-        console.log("-----------------uploadPath--------:",uploadPath);
+        console.log("-----------------uploadPath--------:", uploadPath);
 
         await new Promise((resolve, reject) => {
           const stream = createReadStream();
@@ -5213,7 +5440,7 @@ module.exports = {
         );
 
         const fileUrl = `${process.env.BASE_URL}/v2/uploads/call-recordings/${newFileName}?token=${fileToken}`;
-        console.log("fileUrl-------fileUrl----:",fileUrl);
+        console.log("fileUrl-------fileUrl----:", fileUrl);
 
         let sessionId = null;
 
@@ -7512,8 +7739,8 @@ module.exports = {
     },
 
     createPujaBooking: async (_, { input }, context) => {
-       const user = context?.user;
-       if (!user?.id) {
+      const user = context?.user;
+      if (!user?.id) {
         throw new GraphQLError("Please login to book a puja.");
       }
 
@@ -8113,6 +8340,456 @@ module.exports = {
           cashback: 0,
           payableAmount: 0,
         };
+      }
+    },
+
+    // ======================================================
+    // CREATE LIVE INTERACTION REQUEST
+    // ======================================================
+
+    createLiveInteractionRequest: async (
+      _,
+      { liveStreamId, interactionType },
+      { user },
+    ) => {
+      try {
+        if (!user?.id) {
+          throw new Error("Unauthorized");
+        }
+
+        if (!liveStreamId) {
+          throw new Error("Live stream ID is required");
+        }
+
+        if (!["AUDIO", "VIDEO"].includes(interactionType)) {
+          throw new Error("Interaction type must be AUDIO or VIDEO");
+        }
+
+        const stream = await prisma.liveStream.findFirst({
+          where: {
+            id: liveStreamId,
+            status: "LIVE",
+            isDeleted: false,
+          },
+          select: {
+            id: true,
+            astrologerId: true,
+          },
+        });
+
+        if (!stream) {
+          throw new Error("Live stream is not active");
+        }
+
+        // Get the UID assigned by joinLive.
+        const viewerSession = await prisma.liveViewerSession.findUnique({
+          where: {
+            liveStreamId_userId: {
+              liveStreamId,
+              userId: user.id,
+            },
+          },
+        });
+
+        if (!viewerSession || viewerSession.expiresAt <= new Date()) {
+          throw new Error(
+            "Your live viewer session has expired. Please rejoin the live stream.",
+          );
+        }
+
+        const request = await prisma.$transaction(
+          async (tx) => {
+            // Only one pending/accepted interaction per stream.
+            const activeRequest = await tx.liveInteractionRequest.findFirst({
+              where: {
+                liveStreamId,
+                status: {
+                  in: ["PENDING", "ACCEPTED"],
+                },
+              },
+            });
+
+            if (activeRequest) {
+              throw new Error(
+                activeRequest.status === "ACCEPTED"
+                  ? "Another viewer is currently interacting with the astrologer"
+                  : "An interaction request is already pending",
+              );
+            }
+
+            return tx.liveInteractionRequest.create({
+              data: {
+                liveStreamId,
+                userId: user.id,
+                astrologerId: stream.astrologerId,
+                agoraUid: viewerSession.agoraUid,
+                interactionType,
+                status: "PENDING",
+              },
+            });
+          },
+          {
+            isolationLevel: "Serializable",
+          },
+        );
+
+        return request;
+      } catch (error) {
+        console.error("createLiveInteractionRequest failed:", error.message);
+
+        throw new Error(error.message || "Unable to request interaction");
+      }
+    },
+
+    // ======================================================
+    // ASTROLOGER ACCEPT / REJECT REQUEST
+    // ======================================================
+
+    respondLiveInteractionRequest: async (
+      _,
+      { requestId, accept },
+      { astrologer },
+    ) => {
+      try {
+        if (!astrologer?.id) {
+          throw new Error("Unauthorized: Astrologer login required");
+        }
+
+        if (!requestId) {
+          throw new Error("Interaction request ID is required");
+        }
+
+        const result = await prisma.$transaction(
+          async (tx) => {
+            const request = await tx.liveInteractionRequest.findUnique({
+              where: {
+                id: requestId,
+              },
+            });
+
+            if (!request) {
+              throw new Error("Interaction request not found");
+            }
+
+            if (request.astrologerId !== astrologer.id) {
+              throw new Error(
+                "You are not authorized to respond to this request",
+              );
+            }
+
+            if (request.status !== "PENDING") {
+              throw new Error(`Request is already ${request.status}`);
+            }
+
+            const stream = await tx.liveStream.findFirst({
+              where: {
+                id: request.liveStreamId,
+                astrologerId: astrologer.id,
+                status: "LIVE",
+                isDeleted: false,
+              },
+            });
+
+            if (!stream) {
+              throw new Error("Live stream has ended");
+            }
+
+            if (accept) {
+              const activeRequest = await tx.liveInteractionRequest.findFirst({
+                where: {
+                  liveStreamId: request.liveStreamId,
+                  status: "ACCEPTED",
+                  id: {
+                    not: request.id,
+                  },
+                },
+              });
+
+              if (activeRequest) {
+                throw new Error("Another viewer is already interacting");
+              }
+            }
+
+            return tx.liveInteractionRequest.update({
+              where: {
+                id: request.id,
+              },
+              data: accept
+                ? {
+                    status: "ACCEPTED",
+                    acceptedAt: new Date(),
+                  }
+                : {
+                    status: "REJECTED",
+                  },
+            });
+          },
+          {
+            isolationLevel: "Serializable",
+          },
+        );
+
+        return result;
+      } catch (error) {
+        console.error("respondLiveInteractionRequest failed:", error.message);
+
+        throw new Error(
+          error.message || "Unable to respond to interaction request",
+        );
+      }
+    },
+
+    // ======================================================
+    // END OR CANCEL INTERACTION
+    // ======================================================
+
+    endLiveInteraction: async (_, { requestId }, { user, astrologer }) => {
+      try {
+        if (!user?.id && !astrologer?.id) {
+          throw new Error("Unauthorized");
+        }
+
+        if (!requestId) {
+          throw new Error("Interaction request ID is required");
+        }
+
+        const request = await prisma.liveInteractionRequest.findUnique({
+          where: {
+            id: requestId,
+          },
+        });
+
+        if (!request) {
+          throw new Error("Interaction request not found");
+        }
+
+        const isViewer = user?.id && request.userId === user.id;
+
+        const isAstrologer =
+          astrologer?.id && request.astrologerId === astrologer.id;
+
+        if (!isViewer && !isAstrologer) {
+          throw new Error("You are not authorized to end this interaction");
+        }
+
+        if (request.status !== "PENDING" && request.status !== "ACCEPTED") {
+          throw new Error(
+            `Cannot end interaction with status ${request.status}`,
+          );
+        }
+
+        // A viewer can cancel their own pending request.
+        // An accepted interaction is marked ENDED.
+        const newStatus =
+          request.status === "PENDING" && isViewer
+            ? "CANCELLED"
+            : request.status === "ACCEPTED"
+              ? "ENDED"
+              : null;
+
+        if (!newStatus) {
+          throw new Error("Only the viewer can cancel a pending request");
+        }
+
+        return prisma.liveInteractionRequest.update({
+          where: {
+            id: requestId,
+          },
+          data: {
+            status: newStatus,
+            endedAt: new Date(),
+          },
+        });
+      } catch (error) {
+        console.error("endLiveInteraction failed:", error.message);
+
+        throw new Error(error.message || "Unable to end interaction");
+      }
+    },
+    respondLiveInteractionRequest: async (
+      _,
+      { requestId, accept },
+      { astrologer },
+    ) => {
+      try {
+        // 1. Validate astrologer authentication
+        if (!astrologer?.id) {
+          throw new Error("Unauthorized: Astrologer login required");
+        }
+
+        if (!requestId) {
+          throw new Error("Interaction request ID is required");
+        }
+
+        // 2. Fetch interaction request
+        const request = await prisma.liveInteractionRequest.findUnique({
+          where: {
+            id: requestId,
+          },
+        });
+
+        if (!request) {
+          throw new Error("Interaction request not found");
+        }
+
+        // 3. Verify request belongs to this astrologer
+        if (request.astrologerId !== astrologer.id) {
+          throw new Error("You are not authorized to respond to this request");
+        }
+
+        // 4. Only pending requests can be accepted/rejected
+        if (request.status !== "PENDING") {
+          throw new Error(
+            `Cannot respond to this request. Current status: ${request.status}`,
+          );
+        }
+
+        // 5. Verify live stream is still active
+        const stream = await prisma.liveStream.findFirst({
+          where: {
+            id: request.liveStreamId,
+            astrologerId: astrologer.id,
+            status: "LIVE",
+            isDeleted: false,
+          },
+        });
+
+        if (!stream) {
+          throw new Error("Live stream has ended or is unavailable");
+        }
+
+        // 6. If accepting, ensure no other guest is interacting
+        if (accept) {
+          const activeInteraction =
+            await prisma.liveInteractionRequest.findFirst({
+              where: {
+                liveStreamId: request.liveStreamId,
+                status: "ACCEPTED",
+                id: {
+                  not: request.id,
+                },
+              },
+            });
+
+          if (activeInteraction) {
+            throw new Error("Another viewer is already interacting with you");
+          }
+        }
+
+        // 7. Update request status
+        const updatedRequest = await prisma.liveInteractionRequest.updateMany({
+          where: {
+            id: requestId,
+            astrologerId: astrologer.id,
+            status: "PENDING",
+          },
+          data: accept
+            ? {
+                status: "ACCEPTED",
+                acceptedAt: new Date(),
+              }
+            : {
+                status: "REJECTED",
+              },
+        });
+
+        if (updatedRequest.count === 0) {
+          throw new Error("This request has already been processed");
+        }
+
+        // 8. Return updated request
+        return prisma.liveInteractionRequest.findUnique({
+          where: {
+            id: requestId,
+          },
+        });
+      } catch (error) {
+        console.error("respondLiveInteractionRequest Error:", error.message);
+
+        throw new Error(
+          error.message || "Failed to respond to interaction request",
+        );
+      }
+    },
+
+    endLiveInteraction: async (_, { requestId }, { user, astrologer }) => {
+      try {
+        // 1. Validate authentication
+        if (!user?.id && !astrologer?.id) {
+          throw new Error("Unauthorized");
+        }
+
+        if (!requestId) {
+          throw new Error("Interaction request ID is required");
+        }
+
+        // 2. Fetch interaction request
+        const request = await prisma.liveInteractionRequest.findUnique({
+          where: {
+            id: requestId,
+          },
+        });
+
+        if (!request) {
+          throw new Error("Interaction request not found");
+        }
+
+        // 3. Verify whether caller is viewer or astrologer
+        const isViewer = user?.id === request.userId;
+
+        const isAstrologer = astrologer?.id === request.astrologerId;
+
+        if (!isViewer && !isAstrologer) {
+          throw new Error("You are not authorized to end this interaction");
+        }
+
+        // 4. Determine new status
+        let newStatus;
+
+        if (request.status === "PENDING") {
+          // Only viewer can cancel a pending request
+          if (!isViewer) {
+            throw new Error(
+              "Astrologer cannot cancel a pending viewer request",
+            );
+          }
+
+          newStatus = "CANCELLED";
+        } else if (request.status === "ACCEPTED") {
+          // Either viewer or astrologer can end interaction
+          newStatus = "ENDED";
+        } else {
+          throw new Error(
+            `Cannot end interaction. Current status: ${request.status}`,
+          );
+        }
+
+        // 5. Update request safely
+        const updatedRequest = await prisma.liveInteractionRequest.updateMany({
+          where: {
+            id: requestId,
+            status: request.status,
+          },
+          data: {
+            status: newStatus,
+            endedAt: new Date(),
+          },
+        });
+
+        if (updatedRequest.count === 0) {
+          throw new Error("Interaction has already been ended or cancelled");
+        }
+
+        // 6. Return updated request
+        return prisma.liveInteractionRequest.findUnique({
+          where: {
+            id: requestId,
+          },
+        });
+      } catch (error) {
+        console.error("endLiveInteraction Error:", error.message);
+
+        throw new Error(error.message || "Failed to end live interaction");
       }
     },
   },

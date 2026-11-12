@@ -1858,6 +1858,49 @@ module.exports = gql`
     message: String!
     data: LiveStatusData
   }
+ # ----- LIVE INTERACTION -----
+
+enum LiveInteractionType {
+  AUDIO
+  VIDEO
+}
+
+enum LiveInteractionStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  CANCELLED
+  ENDED
+}
+
+enum LiveInteractionAction {
+  ACCEPT
+  REJECT
+}
+
+type LiveInteractionRequest {
+  id: ID!
+  liveStreamId: String!
+  userId: String!
+  astrologerId: String!
+  agoraUid: Int!
+  interactionType: LiveInteractionType!
+  status: LiveInteractionStatus!
+  requestedAt: String!
+  acceptedAt: String
+  endedAt: String
+  createdAt: String!
+  updatedAt: String!
+}
+
+type LiveInteractionSession {
+  request: LiveInteractionRequest!
+  appId: String!
+  channelName: String!
+  uid: Int!
+  rtcToken: String
+}
+
 
   type Query {
     # puja services
@@ -1999,6 +2042,10 @@ module.exports = gql`
     ): MyBookedPujaServiceResponse!
 
     getLiveStatus(chatRoomId: String!): LiveStatusResponse!
+
+    getMyLiveInteraction(
+    liveStreamId: ID!
+  ): LiveInteractionSession
   }
 
   type Mutation {
@@ -2083,5 +2130,19 @@ module.exports = gql`
     verifyPujaCoupon(
       input: VerifyServiceCouponInput!
     ): VerifyServiceCouponResponse!
+
+    createLiveInteractionRequest(
+    liveStreamId: ID!
+    interactionType: LiveInteractionType!
+  ): LiveInteractionRequest!
+
+  respondLiveInteractionRequest(
+    requestId: ID!
+    action: LiveInteractionAction!
+  ): LiveInteractionRequest!
+
+  endLiveInteraction(requestId: ID!): LiveInteractionRequest!
+
+
   }
 `;
