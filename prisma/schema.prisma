@@ -2131,7 +2131,7 @@ model LiveInteractionRequest {
   updatedAt       DateTime @updatedAt
 
   startedAt       DateTime?
-  endedAt         DateTime?
+  
   durationSeconds Int?
   billableMinutes Int?
   chargedCoins    Float     @default(0)
