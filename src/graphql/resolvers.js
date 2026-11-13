@@ -2925,334 +2925,332 @@ module.exports = {
     },
 
     joinLive: async (_, { channelName }, { user }) => {
-  let currentStep = "initialization";
+      let currentStep = "initialization";
 
-  try {
-    // =====================================================
-    // 1. Validate authentication
-    // =====================================================
-    currentStep = "user authentication";
+      try {
+        // =====================================================
+        // 1. Validate authentication
+        // =====================================================
+        currentStep = "user authentication";
 
-    if (!user?.id) {
-      throw new Error("Unauthorized: Please log in to watch live");
-    }
-
-    if (
-      !channelName ||
-      typeof channelName !== "string" ||
-      !channelName.trim()
-    ) {
-      throw new Error("A valid channel name is required");
-    }
-
-    const normalizedChannelName = channelName.trim();
-
-    // =====================================================
-    // 2. Find active live stream
-    // =====================================================
-    currentStep = "find live stream";
-
-    const stream = await prisma.liveStream.findFirst({
-      where: {
-        channelName: normalizedChannelName,
-        status: "LIVE",
-        isDeleted: false,
-      },
-      select: {
-        id: true,
-        astrologerId: true,
-        channelName: true,
-        chatRoomId: true,
-        totalViews: true,
-        status: true,
-      },
-    });
-
-    if (!stream) {
-      throw new Error("Live stream not found or has already ended");
-    }
-
-    if (!stream.chatRoomId) {
-      throw new Error("Chat room is not configured for this live stream");
-    }
-
-    // =====================================================
-    // 3. Fetch logged-in user details
-    // =====================================================
-    currentStep = "fetch user details";
-
-    const dbUser = await prisma.user.findUnique({
-      where: {
-        id: user.id,
-      },
-      select: {
-        id: true,
-        name: true,
-      },
-    });
-
-    if (!dbUser) {
-      throw new Error("User not found in the database");
-    }
-
-    // =====================================================
-    // 4. Validate Agora RTC configuration
-    // =====================================================
-    currentStep = "validate Agora RTC configuration";
-
-    const appId = process.env.AGORA_APP_ID?.trim();
-    const appCertificate = process.env.AGORA_APP_CERTIFICATE?.trim();
-
-    if (!appId || !appCertificate) {
-      throw new Error(
-        "Agora RTC configuration is missing. Check AGORA_APP_ID and AGORA_APP_CERTIFICATE."
-      );
-    }
-
-    // =====================================================
-    // 5. Validate Agora Chat configuration
-    // =====================================================
-    currentStep = "validate Agora Chat configuration";
-
-    const chatAppKey = process.env.AGORA_CHAT_APP_KEY?.trim();
-    const chatAppId = process.env.AGORA_CHAT_APP_ID?.trim();
-    const chatAppCertificate =
-      process.env.AGORA_CHAT_APP_CERTIFICATE?.trim();
-
-    if (!chatAppKey) {
-      throw new Error("AGORA_CHAT_APP_KEY is missing");
-    }
-
-    if (!chatAppId || !chatAppCertificate) {
-      throw new Error(
-        "Agora Chat token configuration is missing. Check AGORA_CHAT_APP_ID and AGORA_CHAT_APP_CERTIFICATE."
-      );
-    }
-
-    // =====================================================
-    // 6. Generate stable Agora Chat user ID
-    // =====================================================
-    currentStep = "generate Agora Chat user ID";
-
-    const normalizedName = (dbUser.name || "user")
-      .trim()
-      .toLowerCase()
-      .normalize("NFKD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .replace(/[^a-z0-9]+/g, "_")
-      .replace(/^_+|_+$/g, "")
-      .slice(0, 40);
-
-    const chatUserId = `${normalizedName || "user"}_${dbUser.id}`;
-
-    // =====================================================
-    // 7. Create or verify Agora Chat user
-    // =====================================================
-    currentStep = "create or verify Agora Chat user";
-
-    // createAgoraChatUser is now imported from agoraToken.js.
-    // No separate agoraChat.js import is required.
-    await createAgoraChatUser(chatUserId);
-
-    // =====================================================
-    // 8. Get or create persistent Agora viewer session
-    // =====================================================
-    currentStep = "get or create viewer session";
-
-    const now = new Date();
-
-    // Keep this expiry aligned with your RTC token validity.
-    const sessionExpiry = new Date(
-      now.getTime() + 60 * 60 * 1000
-    );
-
-    let viewerSession = null;
-
-    const sessionWhere = {
-      liveStreamId_userId: {
-        liveStreamId: stream.id,
-        userId: dbUser.id,
-      },
-    };
-
-    // Check whether this user already has a session
-    // for this live stream.
-    viewerSession = await prisma.liveViewerSession.findUnique({
-      where: sessionWhere,
-    });
-
-    if (
-      viewerSession &&
-      viewerSession.expiresAt &&
-      viewerSession.expiresAt > now
-    ) {
-      // Reuse the existing UID when the viewer refreshes.
-      console.log("Reusing existing Agora viewer UID", {
-        liveStreamId: stream.id,
-        userId: dbUser.id,
-        uid: viewerSession.agoraUid,
-      });
-
-      viewerSession = await prisma.liveViewerSession.update({
-        where: sessionWhere,
-        data: {
-          expiresAt: sessionExpiry,
-        },
-      });
-    } else {
-      // Session does not exist or has expired.
-      // Generate and persist a new UID.
-      let sessionCreated = false;
-      let lastSessionError = null;
-
-      for (let attempt = 1; attempt <= 5; attempt++) {
-        const newUid = Math.floor(Math.random() * 1000000) + 1;
-
-        try {
-          if (viewerSession) {
-            // Existing session expired: replace its UID.
-            viewerSession = await prisma.liveViewerSession.update({
-              where: sessionWhere,
-              data: {
-                agoraUid: newUid,
-                expiresAt: sessionExpiry,
-              },
-            });
-          } else {
-            // First-time viewer: create a new session.
-            viewerSession = await prisma.liveViewerSession.create({
-              data: {
-                liveStreamId: stream.id,
-                userId: dbUser.id,
-                agoraUid: newUid,
-                expiresAt: sessionExpiry,
-              },
-            });
-          }
-
-          sessionCreated = true;
-          break;
-        } catch (error) {
-          lastSessionError = error;
-
-          // P2002 indicates a unique constraint violation.
-          if (error.code === "P2002") {
-            console.warn(
-              `Agora UID/session collision. Retrying attempt ${attempt}/5`
-            );
-            continue;
-          }
-
-          throw error;
+        if (!user?.id) {
+          throw new Error("Unauthorized: Please log in to watch live");
         }
-      }
 
-      if (!sessionCreated || !viewerSession) {
-        throw (
-          lastSessionError ||
-          new Error("Unable to create Agora viewer session")
+        if (
+          !channelName ||
+          typeof channelName !== "string" ||
+          !channelName.trim()
+        ) {
+          throw new Error("A valid channel name is required");
+        }
+
+        const normalizedChannelName = channelName.trim();
+
+        // =====================================================
+        // 2. Find active live stream
+        // =====================================================
+        currentStep = "find live stream";
+
+        const stream = await prisma.liveStream.findFirst({
+          where: {
+            channelName: normalizedChannelName,
+            status: "LIVE",
+            isDeleted: false,
+          },
+          select: {
+            id: true,
+            astrologerId: true,
+            channelName: true,
+            chatRoomId: true,
+            totalViews: true,
+            status: true,
+          },
+        });
+
+        if (!stream) {
+          throw new Error("Live stream not found or has already ended");
+        }
+
+        if (!stream.chatRoomId) {
+          throw new Error("Chat room is not configured for this live stream");
+        }
+
+        // =====================================================
+        // 3. Fetch logged-in user details
+        // =====================================================
+        currentStep = "fetch user details";
+
+        const dbUser = await prisma.user.findUnique({
+          where: {
+            id: user.id,
+          },
+          select: {
+            id: true,
+            name: true,
+          },
+        });
+
+        if (!dbUser) {
+          throw new Error("User not found in the database");
+        }
+
+        // =====================================================
+        // 4. Validate Agora RTC configuration
+        // =====================================================
+        currentStep = "validate Agora RTC configuration";
+
+        const appId = process.env.AGORA_APP_ID?.trim();
+        const appCertificate = process.env.AGORA_APP_CERTIFICATE?.trim();
+
+        if (!appId || !appCertificate) {
+          throw new Error(
+            "Agora RTC configuration is missing. Check AGORA_APP_ID and AGORA_APP_CERTIFICATE.",
+          );
+        }
+
+        // =====================================================
+        // 5. Validate Agora Chat configuration
+        // =====================================================
+        currentStep = "validate Agora Chat configuration";
+
+        const chatAppKey = process.env.AGORA_CHAT_APP_KEY?.trim();
+        const chatAppId = process.env.AGORA_CHAT_APP_ID?.trim();
+        const chatAppCertificate =
+          process.env.AGORA_CHAT_APP_CERTIFICATE?.trim();
+
+        if (!chatAppKey) {
+          throw new Error("AGORA_CHAT_APP_KEY is missing");
+        }
+
+        if (!chatAppId || !chatAppCertificate) {
+          throw new Error(
+            "Agora Chat token configuration is missing. Check AGORA_CHAT_APP_ID and AGORA_CHAT_APP_CERTIFICATE.",
+          );
+        }
+
+        // =====================================================
+        // 6. Generate stable Agora Chat user ID
+        // =====================================================
+        currentStep = "generate Agora Chat user ID";
+
+        const normalizedName = (dbUser.name || "user")
+          .trim()
+          .toLowerCase()
+          .normalize("NFKD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .replace(/[^a-z0-9]+/g, "_")
+          .replace(/^_+|_+$/g, "")
+          .slice(0, 40);
+
+        const chatUserId = `${normalizedName || "user"}_${dbUser.id}`;
+
+        // =====================================================
+        // 7. Create or verify Agora Chat user
+        // =====================================================
+        currentStep = "create or verify Agora Chat user";
+
+        // createAgoraChatUser is now imported from agoraToken.js.
+        // No separate agoraChat.js import is required.
+        await createAgoraChatUser(chatUserId);
+
+        // =====================================================
+        // 8. Get or create persistent Agora viewer session
+        // =====================================================
+        currentStep = "get or create viewer session";
+
+        const now = new Date();
+
+        // Keep this expiry aligned with your RTC token validity.
+        const sessionExpiry = new Date(now.getTime() + 60 * 60 * 1000);
+
+        let viewerSession = null;
+
+        const sessionWhere = {
+          liveStreamId_userId: {
+            liveStreamId: stream.id,
+            userId: dbUser.id,
+          },
+        };
+
+        // Check whether this user already has a session
+        // for this live stream.
+        viewerSession = await prisma.liveViewerSession.findUnique({
+          where: sessionWhere,
+        });
+
+        if (
+          viewerSession &&
+          viewerSession.expiresAt &&
+          viewerSession.expiresAt > now
+        ) {
+          // Reuse the existing UID when the viewer refreshes.
+          console.log("Reusing existing Agora viewer UID", {
+            liveStreamId: stream.id,
+            userId: dbUser.id,
+            uid: viewerSession.agoraUid,
+          });
+
+          viewerSession = await prisma.liveViewerSession.update({
+            where: sessionWhere,
+            data: {
+              expiresAt: sessionExpiry,
+            },
+          });
+        } else {
+          // Session does not exist or has expired.
+          // Generate and persist a new UID.
+          let sessionCreated = false;
+          let lastSessionError = null;
+
+          for (let attempt = 1; attempt <= 5; attempt++) {
+            const newUid = Math.floor(Math.random() * 1000000) + 1;
+
+            try {
+              if (viewerSession) {
+                // Existing session expired: replace its UID.
+                viewerSession = await prisma.liveViewerSession.update({
+                  where: sessionWhere,
+                  data: {
+                    agoraUid: newUid,
+                    expiresAt: sessionExpiry,
+                  },
+                });
+              } else {
+                // First-time viewer: create a new session.
+                viewerSession = await prisma.liveViewerSession.create({
+                  data: {
+                    liveStreamId: stream.id,
+                    userId: dbUser.id,
+                    agoraUid: newUid,
+                    expiresAt: sessionExpiry,
+                  },
+                });
+              }
+
+              sessionCreated = true;
+              break;
+            } catch (error) {
+              lastSessionError = error;
+
+              // P2002 indicates a unique constraint violation.
+              if (error.code === "P2002") {
+                console.warn(
+                  `Agora UID/session collision. Retrying attempt ${attempt}/5`,
+                );
+                continue;
+              }
+
+              throw error;
+            }
+          }
+
+          if (!sessionCreated || !viewerSession) {
+            throw (
+              lastSessionError ||
+              new Error("Unable to create Agora viewer session")
+            );
+          }
+        }
+
+        // Always use the UID stored in the database.
+        const uid = viewerSession.agoraUid;
+
+        if (!Number.isInteger(uid) || uid <= 0) {
+          throw new Error("Invalid persisted Agora viewer UID");
+        }
+
+        // =====================================================
+        // 9. Generate Agora RTC subscriber token
+        // =====================================================
+        currentStep = "generate RTC subscriber token";
+
+        const rtcToken = generateRtcToken({
+          channelName: stream.channelName,
+          uid,
+          role: "subscriber",
+        });
+
+        if (!rtcToken) {
+          throw new Error("Failed to generate Agora RTC token");
+        }
+
+        // =====================================================
+        // 10. Generate Agora Chat user token
+        // =====================================================
+        currentStep = "generate Agora Chat user token";
+
+        const chatToken = await generateChatToken(chatUserId);
+
+        if (!chatToken) {
+          throw new Error("Failed to generate Agora Chat user token");
+        }
+
+        // =====================================================
+        // 11. Increment total views
+        // =====================================================
+        currentStep = "increment live stream views";
+
+        const updatedStream = await prisma.liveStream.update({
+          where: {
+            id: stream.id,
+          },
+          data: {
+            totalViews: {
+              increment: 1,
+            },
+          },
+          select: {
+            totalViews: true,
+          },
+        });
+
+        // =====================================================
+        // 12. Return viewer credentials
+        // =====================================================
+        currentStep = "prepare joinLive response";
+
+        return {
+          id: stream.id,
+
+          // Astrologer details
+          astrologerId: stream.astrologerId,
+
+          // Live stream information
+          channelName: stream.channelName,
+
+          // Total views
+          totalViews: updatedStream.totalViews,
+
+          // Agora RTC
+          appId,
+          uid,
+          rtcToken,
+
+          // Agora Chat
+          chatUserId,
+          chatToken,
+          chatRoomId: stream.chatRoomId,
+          chatAppKey,
+        };
+      } catch (error) {
+        // Never log tokens, passwords, or certificates.
+        console.error("joinLive failed", {
+          step: currentStep,
+          channelName,
+          userId: user?.id,
+          errorCode: error.code,
+          httpStatus: error.response?.status,
+          agoraError: error.response?.data?.error,
+          agoraErrorDescription: error.response?.data?.error_description,
+          message: error.message,
+        });
+
+        throw new Error(
+          `Failed to join live during "${currentStep}": ${error.message}`,
         );
       }
-    }
-
-    // Always use the UID stored in the database.
-    const uid = viewerSession.agoraUid;
-
-    if (!Number.isInteger(uid) || uid <= 0) {
-      throw new Error("Invalid persisted Agora viewer UID");
-    }
-
-    // =====================================================
-    // 9. Generate Agora RTC subscriber token
-    // =====================================================
-    currentStep = "generate RTC subscriber token";
-
-    const rtcToken = generateRtcToken({
-      channelName: stream.channelName,
-      uid,
-      role: "subscriber",
-    });
-
-    if (!rtcToken) {
-      throw new Error("Failed to generate Agora RTC token");
-    }
-
-    // =====================================================
-    // 10. Generate Agora Chat user token
-    // =====================================================
-    currentStep = "generate Agora Chat user token";
-
-    const chatToken = await generateChatToken(chatUserId);
-
-    if (!chatToken) {
-      throw new Error("Failed to generate Agora Chat user token");
-    }
-
-    // =====================================================
-    // 11. Increment total views
-    // =====================================================
-    currentStep = "increment live stream views";
-
-    const updatedStream = await prisma.liveStream.update({
-      where: {
-        id: stream.id,
-      },
-      data: {
-        totalViews: {
-          increment: 1,
-        },
-      },
-      select: {
-        totalViews: true,
-      },
-    });
-
-    // =====================================================
-    // 12. Return viewer credentials
-    // =====================================================
-    currentStep = "prepare joinLive response";
-
-    return {
-      id: stream.id,
-
-      // Astrologer details
-      astrologerId: stream.astrologerId,
-
-      // Live stream information
-      channelName: stream.channelName,
-
-      // Total views
-      totalViews: updatedStream.totalViews,
-
-      // Agora RTC
-      appId,
-      uid,
-      rtcToken,
-
-      // Agora Chat
-      chatUserId,
-      chatToken,
-      chatRoomId: stream.chatRoomId,
-      chatAppKey,
-    };
-  } catch (error) {
-    // Never log tokens, passwords, or certificates.
-    console.error("joinLive failed", {
-      step: currentStep,
-      channelName,
-      userId: user?.id,
-      errorCode: error.code,
-      httpStatus: error.response?.status,
-      agoraError: error.response?.data?.error,
-      agoraErrorDescription: error.response?.data?.error_description,
-      message: error.message,
-    });
-
-    throw new Error(
-      `Failed to join live during "${currentStep}": ${error.message}`
-    );
-  }
-},
+    },
 
     getLiveGifts: async (_, __, { user }) => {
       try {
@@ -4566,6 +4564,60 @@ module.exports = {
 
         throw new Error(error.message || "Unable to fetch interaction status");
       }
+    },
+    getLiveInteractionPricing: async (_, { astrologerId }, { user }) => {
+      if (!user?.id) {
+        throw new Error("Unauthorized");
+      }
+
+      if (!astrologerId) {
+        throw new Error("Astrologer ID is required");
+      }
+
+      const [audioPricing, videoPricing, wallet] = await Promise.all([
+        prisma.astrologerPricing.findFirst({
+          where: {
+            astrologerId,
+            type: "AUDIO",
+            isActive: true,
+          },
+        }),
+
+        prisma.astrologerPricing.findFirst({
+          where: {
+            astrologerId,
+            type: "VIDEO",
+            isActive: true,
+          },
+        }),
+
+        prisma.userWallet.findUnique({
+          where: {
+            userId: user.id,
+          },
+        }),
+      ]);
+
+      if (!audioPricing || !videoPricing) {
+        throw new Error("Audio/video pricing is not configured.");
+      }
+
+      const audioPrice = Number(audioPricing.offerPrice ?? audioPricing.price);
+
+      const videoPrice = Number(videoPricing.offerPrice ?? videoPricing.price);
+
+      const walletBalance = Math.max(
+        0,
+        Number(wallet?.balanceCoins ?? 0) - Number(wallet?.lockedCoins ?? 0),
+      );
+
+      return {
+        audioPrice,
+        videoPrice,
+        walletBalance,
+        audioAvailable: walletBalance >= audioPrice,
+        videoAvailable: walletBalance >= videoPrice,
+      };
     },
   },
   //----------------start code for mutation ----------------------------
@@ -8547,68 +8599,338 @@ module.exports = {
     // ======================================================
 
     endLiveInteraction: async (_, { requestId }, { user, astrologer }) => {
-      try {
-        if (!user?.id && !astrologer?.id) {
-          throw new Error("Unauthorized");
-        }
+  try {
+    // =====================================================
+    // 1. Authentication and validation
+    // =====================================================
+    if (!user?.id && !astrologer?.id) {
+      throw new Error("Unauthorized");
+    }
 
-        if (!requestId) {
-          throw new Error("Interaction request ID is required");
-        }
+    if (!requestId) {
+      throw new Error("Interaction request ID is required");
+    }
 
-        const request = await prisma.liveInteractionRequest.findUnique({
-          where: {
-            id: requestId,
-          },
-        });
+    // =====================================================
+    // 2. Execute everything inside one transaction
+    // =====================================================
+    return await prisma.$transaction(async (tx) => {
+      const request = await tx.liveInteractionRequest.findUnique({
+        where: { id: requestId },
+      });
 
-        if (!request) {
-          throw new Error("Interaction request not found");
-        }
+      if (!request) {
+        throw new Error("Interaction request not found");
+      }
 
-        const isViewer = user?.id && request.userId === user.id;
+      const isViewer = user?.id && request.userId === user.id;
 
-        const isAstrologer =
-          astrologer?.id && request.astrologerId === astrologer.id;
+      const isAstrologer =
+        astrologer?.id && request.astrologerId === astrologer.id;
 
-        if (!isViewer && !isAstrologer) {
-          throw new Error("You are not authorized to end this interaction");
-        }
+      if (!isViewer && !isAstrologer) {
+        throw new Error(
+          "You are not authorized to end this interaction"
+        );
+      }
 
-        if (request.status !== "PENDING" && request.status !== "ACCEPTED") {
+      // =====================================================
+      // 3. Handle pending request cancellation
+      // =====================================================
+      if (request.status === "PENDING") {
+        if (!isViewer) {
           throw new Error(
-            `Cannot end interaction with status ${request.status}`,
+            "Only the viewer can cancel a pending request"
           );
         }
 
-        // A viewer can cancel their own pending request.
-        // An accepted interaction is marked ENDED.
-        const newStatus =
-          request.status === "PENDING" && isViewer
-            ? "CANCELLED"
-            : request.status === "ACCEPTED"
-              ? "ENDED"
-              : null;
-
-        if (!newStatus) {
-          throw new Error("Only the viewer can cancel a pending request");
-        }
-
-        return prisma.liveInteractionRequest.update({
+        const cancelled = await tx.liveInteractionRequest.updateMany({
           where: {
             id: requestId,
+            status: "PENDING",
           },
           data: {
-            status: newStatus,
+            status: "CANCELLED",
             endedAt: new Date(),
           },
         });
-      } catch (error) {
-        console.error("endLiveInteraction failed:", error.message);
 
-        throw new Error(error.message || "Unable to end interaction");
+        if (cancelled.count === 0) {
+          throw new Error("Request has already been processed");
+        }
+
+        return tx.liveInteractionRequest.findUnique({
+          where: { id: requestId },
+        });
       }
-    },
+
+      // =====================================================
+      // 4. Only accepted interactions can be billed
+      // =====================================================
+      if (request.status !== "ACCEPTED") {
+        throw new Error(
+          `Cannot end interaction with status ${request.status}`
+        );
+      }
+
+      const endedAt = new Date();
+
+      // IMPORTANT:
+      // startedAt must be set by the backend when the
+      // Agora interaction actually starts, not when requested.
+      if (!request.startedAt) {
+        throw new Error(
+          "Interaction start time not found. Cannot calculate billing."
+        );
+      }
+
+      // =====================================================
+      // 5. Calculate actual call duration
+      // =====================================================
+      const durationSeconds = Math.max(
+        0,
+        Math.floor(
+          (endedAt.getTime() - new Date(request.startedAt).getTime()) /
+            1000
+        )
+      );
+
+      // Less than 30 seconds = FREE
+      // 30 seconds or more = charge per started minute
+      const billableMinutes =
+        durationSeconds < 30
+          ? 0
+          : Math.ceil(durationSeconds / 60);
+
+      // =====================================================
+      // 6. Determine interaction type
+      // =====================================================
+      const interactionType = String(
+        request.interactionType || ""
+      ).toUpperCase();
+
+      if (!["AUDIO", "VIDEO"].includes(interactionType)) {
+        throw new Error(
+          `Invalid interaction type: ${interactionType}`
+        );
+      }
+
+      // =====================================================
+      // 7. Fetch astrologer pricing
+      // =====================================================
+      const pricing = await tx.astrologerPricing.findFirst({
+        where: {
+          astrologerId: request.astrologerId,
+          type: interactionType,
+          isActive: true,
+        },
+      });
+
+      if (!pricing) {
+        throw new Error(
+          `${interactionType} call pricing is not configured`
+        );
+      }
+
+      // Use offerPrice when available, otherwise regular price.
+      const pricePerMinute = Number(
+        pricing.offerPrice ?? pricing.price
+      );
+
+      if (
+        !Number.isFinite(pricePerMinute) ||
+        pricePerMinute < 0
+      ) {
+        throw new Error("Invalid call pricing configuration");
+      }
+
+      const totalCoins = Number(
+        (billableMinutes * pricePerMinute).toFixed(2)
+      );
+
+      const commissionPercent = Number(
+        pricing.commissionPercent ?? 0
+      );
+
+      if (
+        !Number.isFinite(commissionPercent) ||
+        commissionPercent < 0 ||
+        commissionPercent > 100
+      ) {
+        throw new Error("Invalid commission configuration");
+      }
+
+      const commissionCoins = Number(
+        ((totalCoins * commissionPercent) / 100).toFixed(2)
+      );
+
+      const astrologerEarning = Number(
+        (totalCoins - commissionCoins).toFixed(2)
+      );
+
+      // =====================================================
+      // 8. Deduct user wallet
+      // =====================================================
+      if (totalCoins > 0) {
+        let userWallet = await tx.userWallet.findUnique({
+          where: {
+            userId: request.userId,
+          },
+        });
+
+        if (!userWallet) {
+          userWallet = await tx.userWallet.create({
+            data: {
+              userId: request.userId,
+              balanceCoins: 0,
+              lockedCoins: 0,
+            },
+          });
+        }
+
+        const balanceCoins = Number(userWallet.balanceCoins || 0);
+        const lockedCoins = Number(userWallet.lockedCoins || 0);
+
+        const availableBalance = Number(
+          (balanceCoins - lockedCoins).toFixed(2)
+        );
+
+        if (availableBalance < totalCoins) {
+          throw new Error(
+            `Insufficient wallet balance. Required: ${totalCoins} coins, Available: ${availableBalance} coins`
+          );
+        }
+
+        // Conditional update protects against concurrent deductions.
+        const debitResult = await tx.userWallet.updateMany({
+          where: {
+            id: userWallet.id,
+            balanceCoins: {
+              gte: totalCoins + lockedCoins,
+            },
+            lockedCoins: lockedCoins,
+          },
+          data: {
+            balanceCoins: {
+              decrement: totalCoins,
+            },
+          },
+        });
+
+        if (debitResult.count === 0) {
+          throw new Error(
+            "Wallet balance changed. Please try again."
+          );
+        }
+
+        const updatedUserWallet = await tx.userWallet.findUnique({
+          where: {
+            id: userWallet.id,
+          },
+        });
+
+        // =====================================================
+        // 9. Create user DEBIT transaction
+        // =====================================================
+        await tx.walletTransaction.create({
+          data: {
+            userWalletId: userWallet.id,
+            type: "DEBIT",
+            coins: totalCoins,
+            amount: totalCoins,
+            updatedBalance: updatedUserWallet.balanceCoins,
+            description: `${interactionType} live call charge (${billableMinutes} minute(s), ${durationSeconds} seconds)`,
+          },
+        });
+
+        // =====================================================
+        // 10. Credit astrologer wallet
+        // =====================================================
+        const astrologerWallet = await tx.astrologerWallet.upsert({
+          where: {
+            astrologerId: request.astrologerId,
+          },
+          create: {
+            astrologerId: request.astrologerId,
+            balanceCoins: astrologerEarning,
+            totalEarned: astrologerEarning,
+            totalCommission: commissionCoins,
+          },
+          update: {
+            balanceCoins: {
+              increment: astrologerEarning,
+            },
+            totalEarned: {
+              increment: astrologerEarning,
+            },
+            totalCommission: {
+              increment: commissionCoins,
+            },
+          },
+        });
+
+        // =====================================================
+        // 11. Create astrologer CREDIT transaction
+        // =====================================================
+        if (astrologerEarning > 0) {
+          await tx.walletTransaction.create({
+            data: {
+              astrologerWalletId: astrologerWallet.id,
+              type: "CREDIT",
+              coins: astrologerEarning,
+              amount: astrologerEarning,
+              updatedBalance: astrologerWallet.balanceCoins,
+              description: `${interactionType} live call earning after ${commissionPercent}% commission`,
+            },
+          });
+        }
+      }
+
+      // =====================================================
+      // 12. Mark interaction as ENDED
+      // =====================================================
+      // Conditional update prevents two simultaneous end requests
+      // from charging the same interaction twice.
+      const endedResult = await tx.liveInteractionRequest.updateMany({
+        where: {
+          id: requestId,
+          status: "ACCEPTED",
+        },
+        data: {
+          status: "ENDED",
+          endedAt,
+          durationSeconds,
+          billableMinutes,
+          chargedCoins: totalCoins,
+        },
+      });
+
+      if (endedResult.count === 0) {
+        throw new Error(
+          "Interaction has already been ended or processed"
+        );
+      }
+
+      // =====================================================
+      // 13. Return updated interaction
+      // =====================================================
+      return tx.liveInteractionRequest.findUnique({
+        where: {
+          id: requestId,
+        },
+      });
+    });
+  } catch (error) {
+    console.error(
+      "endLiveInteraction failed:",
+      error
+    );
+
+    throw new Error(
+      error.message || "Unable to end interaction"
+    );
+  }
+},
     respondLiveInteractionRequest: async (
       _,
       { requestId, accept },

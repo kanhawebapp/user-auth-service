@@ -1901,6 +1901,14 @@ type LiveInteractionSession {
   rtcToken: String
 }
 
+type LiveInteractionPricing {
+  audioPrice: Float!
+  videoPrice: Float!
+  walletBalance: Float!
+  audioAvailable: Boolean!
+  videoAvailable: Boolean!
+}
+
 
   type Query {
     # puja services
@@ -2046,6 +2054,11 @@ type LiveInteractionSession {
     getMyLiveInteraction(
     liveStreamId: ID!
   ): LiveInteractionSession
+
+  getLiveInteractionPricing(
+    astrologerId: ID!
+  ): LiveInteractionPricing!
+
   }
 
   type Mutation {
