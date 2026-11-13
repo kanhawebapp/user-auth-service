@@ -8513,7 +8513,7 @@ module.exports = {
         if (!requestId) {
           throw new Error("Interaction request ID is required");
         }
-
+        console.log("comming respondLiveInteractionRequest");
         const result = await prisma.$transaction(
           async (tx) => {
             const request = await tx.liveInteractionRequest.findUnique({
@@ -8599,338 +8599,317 @@ module.exports = {
     // ======================================================
 
     endLiveInteraction: async (_, { requestId }, { user, astrologer }) => {
-  try {
-    // =====================================================
-    // 1. Authentication and validation
-    // =====================================================
-    if (!user?.id && !astrologer?.id) {
-      throw new Error("Unauthorized");
-    }
+      try {
+        // =====================================================
+        // 1. Authentication and validation
+        // =====================================================
+        if (!user?.id && !astrologer?.id) {
+          throw new Error("Unauthorized");
+        }
+        console.log("comming endLiveInteraction",requestId,user,astrologer);
+        if (!requestId) {
+          throw new Error("Interaction request ID is required");
+        }
 
-    if (!requestId) {
-      throw new Error("Interaction request ID is required");
-    }
+        // =====================================================
+        // 2. Execute everything inside one transaction
+        // =====================================================
+        return await prisma.$transaction(async (tx) => {
+          const request = await tx.liveInteractionRequest.findUnique({
+            where: { id: requestId },
+          });
 
-    // =====================================================
-    // 2. Execute everything inside one transaction
-    // =====================================================
-    return await prisma.$transaction(async (tx) => {
-      const request = await tx.liveInteractionRequest.findUnique({
-        where: { id: requestId },
-      });
+          if (!request) {
+            throw new Error("Interaction request not found");
+          }
 
-      if (!request) {
-        throw new Error("Interaction request not found");
-      }
+          const isViewer = user?.id && request.userId === user.id;
 
-      const isViewer = user?.id && request.userId === user.id;
+          const isAstrologer =
+            astrologer?.id && request.astrologerId === astrologer.id;
 
-      const isAstrologer =
-        astrologer?.id && request.astrologerId === astrologer.id;
+          if (!isViewer && !isAstrologer) {
+            throw new Error("You are not authorized to end this interaction");
+          }
 
-      if (!isViewer && !isAstrologer) {
-        throw new Error(
-          "You are not authorized to end this interaction"
-        );
-      }
+          // =====================================================
+          // 3. Handle pending request cancellation
+          // =====================================================
+          if (request.status === "PENDING") {
+            if (!isViewer) {
+              throw new Error("Only the viewer can cancel a pending request");
+            }
 
-      // =====================================================
-      // 3. Handle pending request cancellation
-      // =====================================================
-      if (request.status === "PENDING") {
-        if (!isViewer) {
-          throw new Error(
-            "Only the viewer can cancel a pending request"
+            const cancelled = await tx.liveInteractionRequest.updateMany({
+              where: {
+                id: requestId,
+                status: "PENDING",
+              },
+              data: {
+                status: "CANCELLED",
+                endedAt: new Date(),
+              },
+            });
+
+            if (cancelled.count === 0) {
+              throw new Error("Request has already been processed");
+            }
+
+            return tx.liveInteractionRequest.findUnique({
+              where: { id: requestId },
+            });
+          }
+
+          // =====================================================
+          // 4. Only accepted interactions can be billed
+          // =====================================================
+          if (request.status !== "ACCEPTED") {
+            throw new Error(
+              `Cannot end interaction with status ${request.status}`,
+            );
+          }
+
+          const endedAt = new Date();
+
+          // IMPORTANT:
+          // startedAt must be set by the backend when the
+          // Agora interaction actually starts, not when requested.
+          if (!request.startedAt) {
+            throw new Error(
+              "Interaction start time not found. Cannot calculate billing.",
+            );
+          }
+
+          // =====================================================
+          // 5. Calculate actual call duration
+          // =====================================================
+          const durationSeconds = Math.max(
+            0,
+            Math.floor(
+              (endedAt.getTime() - new Date(request.startedAt).getTime()) /
+                1000,
+            ),
           );
-        }
 
-        const cancelled = await tx.liveInteractionRequest.updateMany({
-          where: {
-            id: requestId,
-            status: "PENDING",
-          },
-          data: {
-            status: "CANCELLED",
-            endedAt: new Date(),
-          },
-        });
+          // Less than 30 seconds = FREE
+          // 30 seconds or more = charge per started minute
+          const billableMinutes =
+            durationSeconds < 30 ? 0 : Math.ceil(durationSeconds / 60);
 
-        if (cancelled.count === 0) {
-          throw new Error("Request has already been processed");
-        }
+          // =====================================================
+          // 6. Determine interaction type
+          // =====================================================
+          const interactionType = String(
+            request.interactionType || "",
+          ).toUpperCase();
 
-        return tx.liveInteractionRequest.findUnique({
-          where: { id: requestId },
-        });
-      }
+          if (!["AUDIO", "VIDEO"].includes(interactionType)) {
+            throw new Error(`Invalid interaction type: ${interactionType}`);
+          }
 
-      // =====================================================
-      // 4. Only accepted interactions can be billed
-      // =====================================================
-      if (request.status !== "ACCEPTED") {
-        throw new Error(
-          `Cannot end interaction with status ${request.status}`
-        );
-      }
-
-      const endedAt = new Date();
-
-      // IMPORTANT:
-      // startedAt must be set by the backend when the
-      // Agora interaction actually starts, not when requested.
-      if (!request.startedAt) {
-        throw new Error(
-          "Interaction start time not found. Cannot calculate billing."
-        );
-      }
-
-      // =====================================================
-      // 5. Calculate actual call duration
-      // =====================================================
-      const durationSeconds = Math.max(
-        0,
-        Math.floor(
-          (endedAt.getTime() - new Date(request.startedAt).getTime()) /
-            1000
-        )
-      );
-
-      // Less than 30 seconds = FREE
-      // 30 seconds or more = charge per started minute
-      const billableMinutes =
-        durationSeconds < 30
-          ? 0
-          : Math.ceil(durationSeconds / 60);
-
-      // =====================================================
-      // 6. Determine interaction type
-      // =====================================================
-      const interactionType = String(
-        request.interactionType || ""
-      ).toUpperCase();
-
-      if (!["AUDIO", "VIDEO"].includes(interactionType)) {
-        throw new Error(
-          `Invalid interaction type: ${interactionType}`
-        );
-      }
-
-      // =====================================================
-      // 7. Fetch astrologer pricing
-      // =====================================================
-      const pricing = await tx.astrologerPricing.findFirst({
-        where: {
-          astrologerId: request.astrologerId,
-          type: interactionType,
-          isActive: true,
-        },
-      });
-
-      if (!pricing) {
-        throw new Error(
-          `${interactionType} call pricing is not configured`
-        );
-      }
-
-      // Use offerPrice when available, otherwise regular price.
-      const pricePerMinute = Number(
-        pricing.offerPrice ?? pricing.price
-      );
-
-      if (
-        !Number.isFinite(pricePerMinute) ||
-        pricePerMinute < 0
-      ) {
-        throw new Error("Invalid call pricing configuration");
-      }
-
-      const totalCoins = Number(
-        (billableMinutes * pricePerMinute).toFixed(2)
-      );
-
-      const commissionPercent = Number(
-        pricing.commissionPercent ?? 0
-      );
-
-      if (
-        !Number.isFinite(commissionPercent) ||
-        commissionPercent < 0 ||
-        commissionPercent > 100
-      ) {
-        throw new Error("Invalid commission configuration");
-      }
-
-      const commissionCoins = Number(
-        ((totalCoins * commissionPercent) / 100).toFixed(2)
-      );
-
-      const astrologerEarning = Number(
-        (totalCoins - commissionCoins).toFixed(2)
-      );
-
-      // =====================================================
-      // 8. Deduct user wallet
-      // =====================================================
-      if (totalCoins > 0) {
-        let userWallet = await tx.userWallet.findUnique({
-          where: {
-            userId: request.userId,
-          },
-        });
-
-        if (!userWallet) {
-          userWallet = await tx.userWallet.create({
-            data: {
-              userId: request.userId,
-              balanceCoins: 0,
-              lockedCoins: 0,
+          // =====================================================
+          // 7. Fetch astrologer pricing
+          // =====================================================
+          const pricing = await tx.astrologerPricing.findFirst({
+            where: {
+              astrologerId: request.astrologerId,
+              type: interactionType,
+              isActive: true,
             },
           });
-        }
+          console.log("comming pricing",pricing);
 
-        const balanceCoins = Number(userWallet.balanceCoins || 0);
-        const lockedCoins = Number(userWallet.lockedCoins || 0);
+          if (!pricing) {
+            throw new Error(
+              `${interactionType} call pricing is not configured`,
+            );
+          }
 
-        const availableBalance = Number(
-          (balanceCoins - lockedCoins).toFixed(2)
-        );
+          // Use offerPrice when available, otherwise regular price.
+          const pricePerMinute = Number(pricing.offerPrice ?? pricing.price);
+          console.log("comming pricePerMinute",pricePerMinute);
 
-        if (availableBalance < totalCoins) {
-          throw new Error(
-            `Insufficient wallet balance. Required: ${totalCoins} coins, Available: ${availableBalance} coins`
+          if (!Number.isFinite(pricePerMinute) || pricePerMinute < 0) {
+            throw new Error("Invalid call pricing configuration");
+          }
+
+          const totalCoins = Number(
+            (billableMinutes * pricePerMinute).toFixed(2),
           );
-        }
 
-        // Conditional update protects against concurrent deductions.
-        const debitResult = await tx.userWallet.updateMany({
-          where: {
-            id: userWallet.id,
-            balanceCoins: {
-              gte: totalCoins + lockedCoins,
-            },
-            lockedCoins: lockedCoins,
-          },
-          data: {
-            balanceCoins: {
-              decrement: totalCoins,
-            },
-          },
-        });
+          const commissionPercent = Number(pricing.commissionPercent ?? 0);
+         console.log("comming commissionPercent",commissionPercent);
 
-        if (debitResult.count === 0) {
-          throw new Error(
-            "Wallet balance changed. Please try again."
+          if (
+            !Number.isFinite(commissionPercent) ||
+            commissionPercent < 0 ||
+            commissionPercent > 100
+          ) {
+            throw new Error("Invalid commission configuration");
+          }
+
+          const commissionCoins = Number(
+            ((totalCoins * commissionPercent) / 100).toFixed(2),
           );
-        }
 
-        const updatedUserWallet = await tx.userWallet.findUnique({
-          where: {
-            id: userWallet.id,
-          },
-        });
+          const astrologerEarning = Number(
+            (totalCoins - commissionCoins).toFixed(2),
+          );
 
-        // =====================================================
-        // 9. Create user DEBIT transaction
-        // =====================================================
-        await tx.walletTransaction.create({
-          data: {
-            userWalletId: userWallet.id,
-            type: "DEBIT",
-            coins: totalCoins,
-            amount: totalCoins,
-            updatedBalance: updatedUserWallet.balanceCoins,
-            description: `${interactionType} live call charge (${billableMinutes} minute(s), ${durationSeconds} seconds)`,
-          },
-        });
+          // =====================================================
+          // 8. Deduct user wallet
+          // =====================================================
+          if (totalCoins > 0) {
+            let userWallet = await tx.userWallet.findUnique({
+              where: {
+                userId: request.userId,
+              },
+            });
 
-        // =====================================================
-        // 10. Credit astrologer wallet
-        // =====================================================
-        const astrologerWallet = await tx.astrologerWallet.upsert({
-          where: {
-            astrologerId: request.astrologerId,
-          },
-          create: {
-            astrologerId: request.astrologerId,
-            balanceCoins: astrologerEarning,
-            totalEarned: astrologerEarning,
-            totalCommission: commissionCoins,
-          },
-          update: {
-            balanceCoins: {
-              increment: astrologerEarning,
+            if (!userWallet) {
+              userWallet = await tx.userWallet.create({
+                data: {
+                  userId: request.userId,
+                  balanceCoins: 0,
+                  lockedCoins: 0,
+                },
+              });
+            }
+
+            const balanceCoins = Number(userWallet.balanceCoins || 0);
+            const lockedCoins = Number(userWallet.lockedCoins || 0);
+
+            const availableBalance = Number(
+              (balanceCoins - lockedCoins).toFixed(2),
+            );
+
+            if (availableBalance < totalCoins) {
+              throw new Error(
+                `Insufficient wallet balance. Required: ${totalCoins} coins, Available: ${availableBalance} coins`,
+              );
+            }
+
+            // Conditional update protects against concurrent deductions.
+            const debitResult = await tx.userWallet.updateMany({
+              where: {
+                id: userWallet.id,
+                balanceCoins: {
+                  gte: totalCoins + lockedCoins,
+                },
+                lockedCoins: lockedCoins,
+              },
+              data: {
+                balanceCoins: {
+                  decrement: totalCoins,
+                },
+              },
+            });
+
+            if (debitResult.count === 0) {
+              throw new Error("Wallet balance changed. Please try again.");
+            }
+
+            const updatedUserWallet = await tx.userWallet.findUnique({
+              where: {
+                id: userWallet.id,
+              },
+            });
+
+            // =====================================================
+            // 9. Create user DEBIT transaction
+            // =====================================================
+            await tx.walletTransaction.create({
+              data: {
+                userWalletId: userWallet.id,
+                type: "DEBIT",
+                coins: totalCoins,
+                amount: totalCoins,
+                updatedBalance: updatedUserWallet.balanceCoins,
+                description: `${interactionType} live call charge (${billableMinutes} minute(s), ${durationSeconds} seconds)`,
+              },
+            });
+
+            // =====================================================
+            // 10. Credit astrologer wallet
+            // =====================================================
+            const astrologerWallet = await tx.astrologerWallet.upsert({
+              where: {
+                astrologerId: request.astrologerId,
+              },
+              create: {
+                astrologerId: request.astrologerId,
+                balanceCoins: astrologerEarning,
+                totalEarned: astrologerEarning,
+                totalCommission: commissionCoins,
+              },
+              update: {
+                balanceCoins: {
+                  increment: astrologerEarning,
+                },
+                totalEarned: {
+                  increment: astrologerEarning,
+                },
+                totalCommission: {
+                  increment: commissionCoins,
+                },
+              },
+            });
+
+            // =====================================================
+            // 11. Create astrologer CREDIT transaction
+            // =====================================================
+            if (astrologerEarning > 0) {
+              await tx.walletTransaction.create({
+                data: {
+                  astrologerWalletId: astrologerWallet.id,
+                  type: "CREDIT",
+                  coins: astrologerEarning,
+                  amount: astrologerEarning,
+                  updatedBalance: astrologerWallet.balanceCoins,
+                  description: `${interactionType} live call earning after ${commissionPercent}% commission`,
+                },
+              });
+            }
+          }
+
+          // =====================================================
+          // 12. Mark interaction as ENDED
+          // =====================================================
+          // Conditional update prevents two simultaneous end requests
+          // from charging the same interaction twice.
+          const endedResult = await tx.liveInteractionRequest.updateMany({
+            where: {
+              id: requestId,
+              status: "ACCEPTED",
             },
-            totalEarned: {
-              increment: astrologerEarning,
-            },
-            totalCommission: {
-              increment: commissionCoins,
-            },
-          },
-        });
-
-        // =====================================================
-        // 11. Create astrologer CREDIT transaction
-        // =====================================================
-        if (astrologerEarning > 0) {
-          await tx.walletTransaction.create({
             data: {
-              astrologerWalletId: astrologerWallet.id,
-              type: "CREDIT",
-              coins: astrologerEarning,
-              amount: astrologerEarning,
-              updatedBalance: astrologerWallet.balanceCoins,
-              description: `${interactionType} live call earning after ${commissionPercent}% commission`,
+              status: "ENDED",
+              endedAt,
+              durationSeconds,
+              billableMinutes,
+              chargedCoins: totalCoins,
             },
           });
-        }
+
+          if (endedResult.count === 0) {
+            throw new Error("Interaction has already been ended or processed");
+          }
+
+          // =====================================================
+          // 13. Return updated interaction
+          // =====================================================
+          return tx.liveInteractionRequest.findUnique({
+            where: {
+              id: requestId,
+            },
+          });
+        });
+      } catch (error) {
+        console.error("endLiveInteraction failed:", error);
+
+        throw new Error(error.message || "Unable to end interaction");
       }
-
-      // =====================================================
-      // 12. Mark interaction as ENDED
-      // =====================================================
-      // Conditional update prevents two simultaneous end requests
-      // from charging the same interaction twice.
-      const endedResult = await tx.liveInteractionRequest.updateMany({
-        where: {
-          id: requestId,
-          status: "ACCEPTED",
-        },
-        data: {
-          status: "ENDED",
-          endedAt,
-          durationSeconds,
-          billableMinutes,
-          chargedCoins: totalCoins,
-        },
-      });
-
-      if (endedResult.count === 0) {
-        throw new Error(
-          "Interaction has already been ended or processed"
-        );
-      }
-
-      // =====================================================
-      // 13. Return updated interaction
-      // =====================================================
-      return tx.liveInteractionRequest.findUnique({
-        where: {
-          id: requestId,
-        },
-      });
-    });
-  } catch (error) {
-    console.error(
-      "endLiveInteraction failed:",
-      error
-    );
-
-    throw new Error(
-      error.message || "Unable to end interaction"
-    );
-  }
-},
+    },
     respondLiveInteractionRequest: async (
       _,
       { requestId, accept },
