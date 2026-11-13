@@ -24,8 +24,12 @@ const { randomInt } = require("crypto");
 const { sendAgoraChatRoomGiftNotification } = require("../utils/agoraToken");
 const {
   generateRtcToken,
-  generateChatToken,
+  getAgoraChatAppToken,
   createAgoraChatUser,
+  generateChatToken,
+  createAgoraChatRoom,
+  sendAgoraChatRoomGiftNotification,
+  getAgoraChatAppKey,
 } = require("../utils/agoraToken");
 // Helper to log events in MongoDB
 async function logEvent({ userId, action, details }) {
@@ -2921,335 +2925,334 @@ module.exports = {
     },
 
     joinLive: async (_, { channelName }, { user }) => {
-      let currentStep = "initialization";
+  let currentStep = "initialization";
 
-      try {
-        // =====================================================
-        // 1. Validate authentication
-        // =====================================================
-        currentStep = "user authentication";
+  try {
+    // =====================================================
+    // 1. Validate authentication
+    // =====================================================
+    currentStep = "user authentication";
 
-        if (!user?.id) {
-          throw new Error("Unauthorized: Please log in to watch live");
-        }
+    if (!user?.id) {
+      throw new Error("Unauthorized: Please log in to watch live");
+    }
 
-        if (
-          !channelName ||
-          typeof channelName !== "string" ||
-          !channelName.trim()
-        ) {
-          throw new Error("A valid channel name is required");
-        }
+    if (
+      !channelName ||
+      typeof channelName !== "string" ||
+      !channelName.trim()
+    ) {
+      throw new Error("A valid channel name is required");
+    }
 
-        const normalizedChannelName = channelName.trim();
+    const normalizedChannelName = channelName.trim();
 
-        // =====================================================
-        // 2. Find active live stream
-        // =====================================================
-        currentStep = "find live stream";
+    // =====================================================
+    // 2. Find active live stream
+    // =====================================================
+    currentStep = "find live stream";
 
-        const stream = await prisma.liveStream.findFirst({
-          where: {
-            channelName: normalizedChannelName,
-            status: "LIVE",
-            isDeleted: false,
-          },
-          select: {
-            id: true,
-            astrologerId: true,
-            channelName: true,
-            chatRoomId: true,
-            totalViews: true,
-            status: true,
-          },
-        });
+    const stream = await prisma.liveStream.findFirst({
+      where: {
+        channelName: normalizedChannelName,
+        status: "LIVE",
+        isDeleted: false,
+      },
+      select: {
+        id: true,
+        astrologerId: true,
+        channelName: true,
+        chatRoomId: true,
+        totalViews: true,
+        status: true,
+      },
+    });
 
-        if (!stream) {
-          throw new Error("Live stream not found or has already ended");
-        }
+    if (!stream) {
+      throw new Error("Live stream not found or has already ended");
+    }
 
-        if (!stream.chatRoomId) {
-          throw new Error("Chat room is not configured for this live stream");
-        }
+    if (!stream.chatRoomId) {
+      throw new Error("Chat room is not configured for this live stream");
+    }
 
-        // =====================================================
-        // 3. Fetch logged-in user details
-        // =====================================================
-        currentStep = "fetch user details";
+    // =====================================================
+    // 3. Fetch logged-in user details
+    // =====================================================
+    currentStep = "fetch user details";
 
-        const dbUser = await prisma.user.findUnique({
-          where: {
-            id: user.id,
-          },
-          select: {
-            id: true,
-            name: true,
-          },
-        });
+    const dbUser = await prisma.user.findUnique({
+      where: {
+        id: user.id,
+      },
+      select: {
+        id: true,
+        name: true,
+      },
+    });
 
-        if (!dbUser) {
-          throw new Error("User not found in the database");
-        }
+    if (!dbUser) {
+      throw new Error("User not found in the database");
+    }
 
-        // =====================================================
-        // 4. Validate Agora RTC configuration
-        // =====================================================
-        currentStep = "validate Agora RTC configuration";
+    // =====================================================
+    // 4. Validate Agora RTC configuration
+    // =====================================================
+    currentStep = "validate Agora RTC configuration";
 
-        const appId = process.env.AGORA_APP_ID?.trim();
+    const appId = process.env.AGORA_APP_ID?.trim();
+    const appCertificate = process.env.AGORA_APP_CERTIFICATE?.trim();
 
-        const appCertificate = process.env.AGORA_APP_CERTIFICATE?.trim();
+    if (!appId || !appCertificate) {
+      throw new Error(
+        "Agora RTC configuration is missing. Check AGORA_APP_ID and AGORA_APP_CERTIFICATE."
+      );
+    }
 
-        if (!appId || !appCertificate) {
-          throw new Error(
-            "Agora RTC configuration is missing. Check AGORA_APP_ID and AGORA_APP_CERTIFICATE.",
-          );
-        }
+    // =====================================================
+    // 5. Validate Agora Chat configuration
+    // =====================================================
+    currentStep = "validate Agora Chat configuration";
 
-        // =====================================================
-        // 5. Validate Agora Chat configuration
-        // =====================================================
-        currentStep = "validate Agora Chat configuration";
+    const chatAppKey = process.env.AGORA_CHAT_APP_KEY?.trim();
+    const chatAppId = process.env.AGORA_CHAT_APP_ID?.trim();
+    const chatAppCertificate =
+      process.env.AGORA_CHAT_APP_CERTIFICATE?.trim();
 
-        const chatAppKey = process.env.AGORA_CHAT_APP_KEY?.trim();
+    if (!chatAppKey) {
+      throw new Error("AGORA_CHAT_APP_KEY is missing");
+    }
 
-        const chatAppId = process.env.AGORA_CHAT_APP_ID?.trim();
+    if (!chatAppId || !chatAppCertificate) {
+      throw new Error(
+        "Agora Chat token configuration is missing. Check AGORA_CHAT_APP_ID and AGORA_CHAT_APP_CERTIFICATE."
+      );
+    }
 
-        const chatAppCertificate =
-          process.env.AGORA_CHAT_APP_CERTIFICATE?.trim();
+    // =====================================================
+    // 6. Generate stable Agora Chat user ID
+    // =====================================================
+    currentStep = "generate Agora Chat user ID";
 
-        if (!chatAppKey) {
-          throw new Error("AGORA_CHAT_APP_KEY is missing");
-        }
+    const normalizedName = (dbUser.name || "user")
+      .trim()
+      .toLowerCase()
+      .normalize("NFKD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "")
+      .slice(0, 40);
 
-        if (!chatAppId || !chatAppCertificate) {
-          throw new Error(
-            "Agora Chat token configuration is missing. Check AGORA_CHAT_APP_ID and AGORA_CHAT_APP_CERTIFICATE.",
-          );
-        }
+    const chatUserId = `${normalizedName || "user"}_${dbUser.id}`;
 
-        // =====================================================
-        // 6. Generate stable Agora Chat user ID
-        // =====================================================
-        currentStep = "generate Agora Chat user ID";
+    // =====================================================
+    // 7. Create or verify Agora Chat user
+    // =====================================================
+    currentStep = "create or verify Agora Chat user";
 
-        const normalizedName = (dbUser.name || "user")
-          .trim()
-          .toLowerCase()
-          .normalize("NFKD")
-          .replace(/[\u0300-\u036f]/g, "")
-          .replace(/[^a-z0-9]+/g, "_")
-          .replace(/^_+|_+$/g, "")
-          .slice(0, 40);
+    // createAgoraChatUser is now imported from agoraToken.js.
+    // No separate agoraChat.js import is required.
+    await createAgoraChatUser(chatUserId);
 
-        const chatUserId = `${normalizedName || "user"}_${dbUser.id}`;
+    // =====================================================
+    // 8. Get or create persistent Agora viewer session
+    // =====================================================
+    currentStep = "get or create viewer session";
 
-        // =====================================================
-        // 7. Create or verify Agora Chat user
-        // =====================================================
-        currentStep = "create or verify Agora Chat user";
+    const now = new Date();
 
-        await createAgoraChatUser(chatUserId);
+    // Keep this expiry aligned with your RTC token validity.
+    const sessionExpiry = new Date(
+      now.getTime() + 60 * 60 * 1000
+    );
 
-        // =====================================================
-        // 8. Get or create persistent Agora viewer session
-        // =====================================================
-        currentStep = "get or create viewer session";
+    let viewerSession = null;
 
-        const now = new Date();
+    const sessionWhere = {
+      liveStreamId_userId: {
+        liveStreamId: stream.id,
+        userId: dbUser.id,
+      },
+    };
 
-        // Keep this expiry aligned with your RTC token validity.
-        const sessionExpiry = new Date(now.getTime() + 60 * 60 * 1000);
+    // Check whether this user already has a session
+    // for this live stream.
+    viewerSession = await prisma.liveViewerSession.findUnique({
+      where: sessionWhere,
+    });
 
-        let viewerSession = null;
+    if (
+      viewerSession &&
+      viewerSession.expiresAt &&
+      viewerSession.expiresAt > now
+    ) {
+      // Reuse the existing UID when the viewer refreshes.
+      console.log("Reusing existing Agora viewer UID", {
+        liveStreamId: stream.id,
+        userId: dbUser.id,
+        uid: viewerSession.agoraUid,
+      });
 
-        const sessionWhere = {
-          liveStreamId_userId: {
-            liveStreamId: stream.id,
-            userId: dbUser.id,
-          },
-        };
+      viewerSession = await prisma.liveViewerSession.update({
+        where: sessionWhere,
+        data: {
+          expiresAt: sessionExpiry,
+        },
+      });
+    } else {
+      // Session does not exist or has expired.
+      // Generate and persist a new UID.
+      let sessionCreated = false;
+      let lastSessionError = null;
 
-        // First check whether this user already has a session
-        // for this live stream.
-        viewerSession = await prisma.liveViewerSession.findUnique({
-          where: sessionWhere,
-        });
+      for (let attempt = 1; attempt <= 5; attempt++) {
+        const newUid = Math.floor(Math.random() * 1000000) + 1;
 
-        if (
-          viewerSession &&
-          viewerSession.expiresAt &&
-          viewerSession.expiresAt > now
-        ) {
-          // Reuse the existing UID.
-          // This is important when a viewer refreshes the page.
-          console.log("Reusing existing Agora viewer UID", {
-            liveStreamId: stream.id,
-            userId: dbUser.id,
-            uid: viewerSession.agoraUid,
-          });
-
-          viewerSession = await prisma.liveViewerSession.update({
-            where: sessionWhere,
-            data: {
-              expiresAt: sessionExpiry,
-            },
-          });
-        } else {
-          // Session does not exist or has expired.
-          // Generate a new UID and persist it.
-          let sessionCreated = false;
-          let lastSessionError = null;
-
-          for (let attempt = 1; attempt <= 5; attempt++) {
-            const newUid = Math.floor(Math.random() * 1000000) + 1;
-
-            try {
-              if (viewerSession) {
-                // Existing session expired: replace its UID.
-                viewerSession = await prisma.liveViewerSession.update({
-                  where: sessionWhere,
-                  data: {
-                    agoraUid: newUid,
-                    expiresAt: sessionExpiry,
-                  },
-                });
-              } else {
-                // First-time viewer: create a new session.
-                viewerSession = await prisma.liveViewerSession.create({
-                  data: {
-                    liveStreamId: stream.id,
-                    userId: dbUser.id,
-                    agoraUid: newUid,
-                    expiresAt: sessionExpiry,
-                  },
-                });
-              }
-
-              sessionCreated = true;
-              break;
-            } catch (error) {
-              lastSessionError = error;
-
-              // P2002 indicates a unique constraint collision.
-              // Try another UID if the generated UID is already used.
-              if (error.code === "P2002") {
-                console.warn(
-                  `Agora UID collision. Retrying attempt ${attempt}/5`,
-                );
-                continue;
-              }
-
-              throw error;
-            }
+        try {
+          if (viewerSession) {
+            // Existing session expired: replace its UID.
+            viewerSession = await prisma.liveViewerSession.update({
+              where: sessionWhere,
+              data: {
+                agoraUid: newUid,
+                expiresAt: sessionExpiry,
+              },
+            });
+          } else {
+            // First-time viewer: create a new session.
+            viewerSession = await prisma.liveViewerSession.create({
+              data: {
+                liveStreamId: stream.id,
+                userId: dbUser.id,
+                agoraUid: newUid,
+                expiresAt: sessionExpiry,
+              },
+            });
           }
 
-          if (!sessionCreated || !viewerSession) {
-            throw (
-              lastSessionError ||
-              new Error("Unable to create Agora viewer session")
+          sessionCreated = true;
+          break;
+        } catch (error) {
+          lastSessionError = error;
+
+          // P2002 indicates a unique constraint violation.
+          if (error.code === "P2002") {
+            console.warn(
+              `Agora UID/session collision. Retrying attempt ${attempt}/5`
             );
+            continue;
           }
+
+          throw error;
         }
+      }
 
-        // Always use the UID stored in the database.
-        const uid = viewerSession.agoraUid;
-
-        if (!Number.isInteger(uid) || uid <= 0) {
-          throw new Error("Invalid persisted Agora viewer UID");
-        }
-
-        // =====================================================
-        // 9. Generate Agora RTC subscriber token
-        // =====================================================
-        currentStep = "generate RTC subscriber token";
-
-        const rtcToken = generateRtcToken({
-          channelName: stream.channelName,
-          uid,
-          role: "subscriber",
-        });
-
-        if (!rtcToken) {
-          throw new Error("Failed to generate Agora RTC token");
-        }
-
-        // =====================================================
-        // 10. Generate Agora Chat user token
-        // =====================================================
-        currentStep = "generate Agora Chat user token";
-
-        const chatToken = await generateChatToken(chatUserId);
-
-        if (!chatToken) {
-          throw new Error("Failed to generate Agora Chat user token");
-        }
-
-        // =====================================================
-        // 11. Increment total views
-        // =====================================================
-        currentStep = "increment live stream views";
-
-        const updatedStream = await prisma.liveStream.update({
-          where: {
-            id: stream.id,
-          },
-          data: {
-            totalViews: {
-              increment: 1,
-            },
-          },
-          select: {
-            totalViews: true,
-          },
-        });
-
-        // =====================================================
-        // 12. Return viewer credentials
-        // =====================================================
-        currentStep = "prepare joinLive response";
-
-        return {
-          id: stream.id,
-
-          // Astrologer details
-          astrologerId: stream.astrologerId,
-
-          // Live stream information
-          channelName: stream.channelName,
-
-          // Total views
-          totalViews: updatedStream.totalViews,
-
-          // Agora RTC
-          appId,
-          uid,
-          rtcToken,
-
-          // Agora Chat
-          chatUserId,
-          chatToken,
-          chatRoomId: stream.chatRoomId,
-          chatAppKey,
-        };
-      } catch (error) {
-        // Never log tokens, passwords, or certificates.
-        console.error("joinLive failed", {
-          step: currentStep,
-          channelName,
-          userId: user?.id,
-          errorCode: error.code,
-          httpStatus: error.response?.status,
-          agoraError: error.response?.data?.error,
-          agoraErrorDescription: error.response?.data?.error_description,
-          message: error.message,
-        });
-
-        throw new Error(
-          `Failed to join live during "${currentStep}": ${error.message}`,
+      if (!sessionCreated || !viewerSession) {
+        throw (
+          lastSessionError ||
+          new Error("Unable to create Agora viewer session")
         );
       }
-    },
+    }
+
+    // Always use the UID stored in the database.
+    const uid = viewerSession.agoraUid;
+
+    if (!Number.isInteger(uid) || uid <= 0) {
+      throw new Error("Invalid persisted Agora viewer UID");
+    }
+
+    // =====================================================
+    // 9. Generate Agora RTC subscriber token
+    // =====================================================
+    currentStep = "generate RTC subscriber token";
+
+    const rtcToken = generateRtcToken({
+      channelName: stream.channelName,
+      uid,
+      role: "subscriber",
+    });
+
+    if (!rtcToken) {
+      throw new Error("Failed to generate Agora RTC token");
+    }
+
+    // =====================================================
+    // 10. Generate Agora Chat user token
+    // =====================================================
+    currentStep = "generate Agora Chat user token";
+
+    const chatToken = await generateChatToken(chatUserId);
+
+    if (!chatToken) {
+      throw new Error("Failed to generate Agora Chat user token");
+    }
+
+    // =====================================================
+    // 11. Increment total views
+    // =====================================================
+    currentStep = "increment live stream views";
+
+    const updatedStream = await prisma.liveStream.update({
+      where: {
+        id: stream.id,
+      },
+      data: {
+        totalViews: {
+          increment: 1,
+        },
+      },
+      select: {
+        totalViews: true,
+      },
+    });
+
+    // =====================================================
+    // 12. Return viewer credentials
+    // =====================================================
+    currentStep = "prepare joinLive response";
+
+    return {
+      id: stream.id,
+
+      // Astrologer details
+      astrologerId: stream.astrologerId,
+
+      // Live stream information
+      channelName: stream.channelName,
+
+      // Total views
+      totalViews: updatedStream.totalViews,
+
+      // Agora RTC
+      appId,
+      uid,
+      rtcToken,
+
+      // Agora Chat
+      chatUserId,
+      chatToken,
+      chatRoomId: stream.chatRoomId,
+      chatAppKey,
+    };
+  } catch (error) {
+    // Never log tokens, passwords, or certificates.
+    console.error("joinLive failed", {
+      step: currentStep,
+      channelName,
+      userId: user?.id,
+      errorCode: error.code,
+      httpStatus: error.response?.status,
+      agoraError: error.response?.data?.error,
+      agoraErrorDescription: error.response?.data?.error_description,
+      message: error.message,
+    });
+
+    throw new Error(
+      `Failed to join live during "${currentStep}": ${error.message}`
+    );
+  }
+},
 
     getLiveGifts: async (_, __, { user }) => {
       try {
