@@ -8794,13 +8794,13 @@ module.exports = {
 
       // DhwaniAstro platform commission
 
-      const platformEarning = Number(
+      const astrologerEarning = Number(
         ((totalDeducted * commissionPercent) / 100).toFixed(2)
       );
 
       // Astrologer's net earning
 
-      const astrologerEarning = Number(
+      const platformEarning = Number(
         (totalDeducted - platformEarning).toFixed(2)
       );
 
