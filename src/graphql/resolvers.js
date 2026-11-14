@@ -8792,7 +8792,7 @@ module.exports = {
           // Astrologer's net earning
 
           const platformEarning = Number(
-            (totalDeducted - platformEarning).toFixed(2),
+            (totalDeducted - astrologerEarning).toFixed(2),
           );
 
           console.log("Interaction billing calculation:", {
