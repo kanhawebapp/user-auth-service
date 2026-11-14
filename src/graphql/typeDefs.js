@@ -1886,9 +1886,16 @@ type LiveInteractionRequest {
   agoraUid: Int!
   interactionType: LiveInteractionType!
   status: LiveInteractionStatus!
+
   requestedAt: String!
   acceptedAt: String
+  startedAt: String
   endedAt: String
+
+  durationSeconds: Int
+  billableMinutes: Int
+  chargedCoins: Float
+
   createdAt: String!
   updatedAt: String!
 }
