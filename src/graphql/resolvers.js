@@ -4619,7 +4619,7 @@ module.exports = {
         videoAvailable: walletBalance >= videoPrice,
       };
     },
-    getMyLiveInteractionHistory: async (_, { searchInput = {} }, { user, prisma }) => {
+    getMyLiveInteractionHistory: async (_, { searchInput = {} }, { user }) => {
   try {
     // =====================================================
     // 1. Authentication
