@@ -4899,39 +4899,39 @@ module.exports = {
     // =====================================================
 
     const formattedData = requests.map((item) => ({
-      sessionId: item.id,
+  sessionId: item.id,
 
-      liveStreamId: item.liveStreamId,
+  liveStreamId: item.liveStreamId,
 
-      astrologerId: item.astrologerId,
+  astrologerId: item.astrologerId,
 
-      astrologerName:
-        item.astrologer?.displayName ||
-        item.astrologer?.name ||
-        "",
+  astrologerName:
+    item.astrologer?.displayName ||
+    item.astrologer?.name ||
+    "",
 
-      interactionType: item.interactionType,
+  interactionType: item.interactionType,
 
-      status: item.status,
+  status: item.status,
 
-      ratePerMin: Number(item.ratePerMin || 0),
+  ratePerMin: Number(item.ratePerMin || 0),
 
-      chargedCoins: Number(item.chargedCoins || 0),
+  chargedCoins: Number(item.chargedCoins || 0),
 
-      durationSeconds: item.durationSeconds || 0,
+  durationSeconds: item.durationSeconds || 0,
 
-      billableMinutes: item.billableMinutes || 0,
+  billableMinutes: item.billableMinutes || 0,
 
-      requestedAt: item.requestedAt,
+  requestedAt: item.requestedAt?.toISOString() || null,
 
-      acceptedAt: item.acceptedAt,
+  acceptedAt: item.acceptedAt?.toISOString() || null,
 
-      startedAt: item.startedAt,
+  startedAt: item.startedAt?.toISOString() || null,
 
-      endedAt: item.endedAt,
+  endedAt: item.endedAt?.toISOString() || null,
 
-      createdAt: item.createdAt,
-    }));
+  createdAt: item.createdAt.toISOString(),
+}));
 
     // =====================================================
     // 9. Return response

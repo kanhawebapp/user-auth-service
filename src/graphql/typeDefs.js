@@ -1948,11 +1948,11 @@ type MyLiveInteractionHistoryItem {
   durationSeconds: Int!
   billableMinutes: Int!
 
-  requestedAt: DateTime
-  acceptedAt: DateTime
-  startedAt: DateTime
-  endedAt: DateTime
-  createdAt: DateTime!
+  requestedAt: String
+  acceptedAt: String
+  startedAt: String
+  endedAt: String
+  createdAt: String!
 }
 
 type MyLiveInteractionHistoryResponse {
