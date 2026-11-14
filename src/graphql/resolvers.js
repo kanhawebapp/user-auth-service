@@ -8599,6 +8599,7 @@ module.exports = {
     // ======================================================
 
     endLiveInteraction: async (_, { requestId }, { user, astrologer }) => {
+      console.log("comming endLiveInteraction ");
       try {
         // =====================================================
         // 1. Authentication and validation
@@ -9016,85 +9017,6 @@ module.exports = {
       }
     },
 
-    endLiveInteraction: async (_, { requestId }, { user, astrologer }) => {
-      try {
-        // 1. Validate authentication
-        if (!user?.id && !astrologer?.id) {
-          throw new Error("Unauthorized");
-        }
-
-        if (!requestId) {
-          throw new Error("Interaction request ID is required");
-        }
-
-        // 2. Fetch interaction request
-        const request = await prisma.liveInteractionRequest.findUnique({
-          where: {
-            id: requestId,
-          },
-        });
-
-        if (!request) {
-          throw new Error("Interaction request not found");
-        }
-
-        // 3. Verify whether caller is viewer or astrologer
-        const isViewer = user?.id === request.userId;
-
-        const isAstrologer = astrologer?.id === request.astrologerId;
-
-        if (!isViewer && !isAstrologer) {
-          throw new Error("You are not authorized to end this interaction");
-        }
-
-        // 4. Determine new status
-        let newStatus;
-
-        if (request.status === "PENDING") {
-          // Only viewer can cancel a pending request
-          if (!isViewer) {
-            throw new Error(
-              "Astrologer cannot cancel a pending viewer request",
-            );
-          }
-
-          newStatus = "CANCELLED";
-        } else if (request.status === "ACCEPTED") {
-          // Either viewer or astrologer can end interaction
-          newStatus = "ENDED";
-        } else {
-          throw new Error(
-            `Cannot end interaction. Current status: ${request.status}`,
-          );
-        }
-
-        // 5. Update request safely
-        const updatedRequest = await prisma.liveInteractionRequest.updateMany({
-          where: {
-            id: requestId,
-            status: request.status,
-          },
-          data: {
-            status: newStatus,
-            endedAt: new Date(),
-          },
-        });
-
-        if (updatedRequest.count === 0) {
-          throw new Error("Interaction has already been ended or cancelled");
-        }
-
-        // 6. Return updated request
-        return prisma.liveInteractionRequest.findUnique({
-          where: {
-            id: requestId,
-          },
-        });
-      } catch (error) {
-        console.error("endLiveInteraction Error:", error.message);
-
-        throw new Error(error.message || "Failed to end live interaction");
-      }
-    },
+    
   },
 };
