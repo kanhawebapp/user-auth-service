@@ -8911,6 +8911,7 @@ module.exports = {
         throw new Error(error.message || "Unable to end interaction");
       }
     },
+
     respondLiveInteractionRequest: async (
       _,
       { requestId, accept },
@@ -9016,6 +9017,78 @@ module.exports = {
         );
       }
     },
+
+    startLiveInteraction: async (_, { requestId }, { user, astrologer }) => {
+  try {
+    if (!user?.id && !astrologer?.id) {
+      throw new Error("Unauthorized");
+    }
+
+    if (!requestId) {
+      throw new Error("Interaction request ID is required");
+    }
+
+    return await prisma.$transaction(async (tx) => {
+      const request = await tx.liveInteractionRequest.findUnique({
+        where: { id: requestId },
+      });
+
+      if (!request) {
+        throw new Error("Interaction request not found");
+      }
+
+      const isViewer = user?.id && request.userId === user.id;
+
+      const isAstrologer =
+        astrologer?.id && request.astrologerId === astrologer.id;
+
+      if (!isViewer && !isAstrologer) {
+        throw new Error("You are not authorized to start this interaction");
+      }
+
+      if (request.status !== "ACCEPTED") {
+        throw new Error("Only accepted interactions can be started");
+      }
+
+      // Do not reset the timer if this mutation is called again.
+      if (request.startedAt) {
+        return request;
+      }
+
+      const startedAt = new Date();
+
+      const result = await tx.liveInteractionRequest.updateMany({
+        where: {
+          id: requestId,
+          status: "ACCEPTED",
+          startedAt: null,
+        },
+        data: {
+          startedAt,
+        },
+      });
+
+      if (result.count === 0) {
+        const latestRequest = await tx.liveInteractionRequest.findUnique({
+          where: { id: requestId },
+        });
+
+        if (latestRequest?.startedAt) {
+          return latestRequest;
+        }
+
+        throw new Error("Unable to start live interaction");
+      }
+
+      return tx.liveInteractionRequest.findUnique({
+        where: { id: requestId },
+      });
+    });
+  } catch (error) {
+    console.error("startLiveInteraction failed:", error.message);
+    throw new Error(error.message || "Unable to start interaction");
+  }
+},
 
     
   },

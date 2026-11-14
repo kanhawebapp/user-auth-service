@@ -2161,7 +2161,11 @@ type LiveInteractionPricing {
     action: LiveInteractionAction!
   ): LiveInteractionRequest!
 
+  startLiveInteraction(requestId: ID!): LiveInteractionRequest!
+
   endLiveInteraction(requestId: ID!): LiveInteractionRequest!
+
+
 
 
   }
