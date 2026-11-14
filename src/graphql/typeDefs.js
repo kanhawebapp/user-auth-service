@@ -1916,6 +1916,58 @@ type LiveInteractionPricing {
   videoAvailable: Boolean!
 }
 
+input MyLiveInteractionHistorySearchInput {
+  query: String
+  sessionId: String
+  astrologerName: String
+
+  status: LiveInteractionStatus
+  interactionType: LiveInteractionType
+
+  filterType: String
+  startDate: String
+  endDate: String
+
+  page: Int
+  limit: Int
+}
+
+type MyLiveInteractionHistoryItem {
+  sessionId: String!
+  liveStreamId: String!
+
+  astrologerId: String!
+  astrologerName: String!
+
+  interactionType: LiveInteractionType!
+  status: LiveInteractionStatus!
+
+  ratePerMin: Float!
+  chargedCoins: Float!
+
+  durationSeconds: Int!
+  billableMinutes: Int!
+
+  requestedAt: DateTime
+  acceptedAt: DateTime
+  startedAt: DateTime
+  endedAt: DateTime
+  createdAt: DateTime!
+}
+
+type MyLiveInteractionHistoryResponse {
+  data: [MyLiveInteractionHistoryItem!]!
+
+  totalCount: Int!
+  currentPage: Int!
+  totalPages: Int!
+
+  totalCoinsDeducted: Float!
+
+  totalAudioCalls: Int!
+  totalVideoCalls: Int!
+}
+
 
   type Query {
     # puja services
@@ -2065,6 +2117,10 @@ type LiveInteractionPricing {
   getLiveInteractionPricing(
     astrologerId: ID!
   ): LiveInteractionPricing!
+
+  getMyLiveInteractionHistory(
+    searchInput: MyLiveInteractionHistorySearchInput
+  ): MyLiveInteractionHistoryResponse!
 
   }
 

@@ -4619,6 +4619,352 @@ module.exports = {
         videoAvailable: walletBalance >= videoPrice,
       };
     },
+    getMyLiveInteractionHistory: async (_, { searchInput = {} }, { user, prisma }) => {
+  try {
+    // =====================================================
+    // 1. Authentication
+    // =====================================================
+
+    if (!user?.id) {
+      throw new Error("Unauthorized");
+    }
+
+    // =====================================================
+    // 2. Search input
+    // =====================================================
+
+    const {
+      query,
+      sessionId,
+      astrologerName,
+      status,
+      interactionType,
+      filterType,
+      startDate,
+      endDate,
+      page = 1,
+      limit = 10,
+    } = searchInput;
+
+    // =====================================================
+    // 3. Pagination
+    // =====================================================
+
+    const safePage = Math.max(Number(page) || 1, 1);
+
+    const safeLimit = Math.min(
+      Math.max(Number(limit) || 10, 1),
+      100
+    );
+
+    const skip = (safePage - 1) * safeLimit;
+
+    // =====================================================
+    // 4. Base WHERE
+    // =====================================================
+
+    // Always fetch history belonging to the logged-in user.
+    const where = {
+      userId: user.id,
+    };
+
+    if (sessionId?.trim()) {
+      where.id = sessionId.trim();
+    }
+
+    if (status) {
+      where.status = status;
+    }
+
+    if (interactionType) {
+      where.interactionType = interactionType;
+    }
+
+    // =====================================================
+    // 5. Search filters
+    // =====================================================
+
+    const searchFilters = [];
+
+    if (query?.trim()) {
+      const searchValue = query.trim();
+
+      searchFilters.push(
+        {
+          id: {
+            contains: searchValue,
+            mode: "insensitive",
+          },
+        },
+        {
+          astrologer: {
+            name: {
+              contains: searchValue,
+              mode: "insensitive",
+            },
+          },
+        },
+        {
+          astrologer: {
+            displayName: {
+              contains: searchValue,
+              mode: "insensitive",
+            },
+          },
+        }
+      );
+    }
+
+    if (astrologerName?.trim()) {
+      searchFilters.push({
+        astrologer: {
+          OR: [
+            {
+              name: {
+                contains: astrologerName.trim(),
+                mode: "insensitive",
+              },
+            },
+            {
+              displayName: {
+                contains: astrologerName.trim(),
+                mode: "insensitive",
+              },
+            },
+          ],
+        },
+      });
+    }
+
+    if (searchFilters.length > 0) {
+      where.AND = [
+        {
+          OR: searchFilters,
+        },
+      ];
+    }
+
+    // =====================================================
+    // 6. Date filters (IST)
+    // =====================================================
+
+    let start;
+    let end;
+
+    const now = new Date();
+
+    switch (filterType) {
+      case "TODAY": {
+        const istDate = new Date(
+          now.toLocaleString("en-US", {
+            timeZone: "Asia/Kolkata",
+          })
+        );
+
+        const year = istDate.getFullYear();
+        const month = istDate.getMonth();
+        const day = istDate.getDate();
+
+        start = new Date(
+          `${year}-${String(month + 1).padStart(2, "0")}-${String(
+            day
+          ).padStart(2, "0")}T00:00:00+05:30`
+        );
+
+        end = new Date(start);
+        end.setUTCDate(end.getUTCDate() + 1);
+
+        break;
+      }
+
+      case "WEEK": {
+        start = new Date(now);
+        start.setDate(start.getDate() - 7);
+        end = now;
+        break;
+      }
+
+      case "MONTH": {
+        start = new Date(now);
+        start.setMonth(start.getMonth() - 1);
+        end = now;
+        break;
+      }
+
+      case "YEAR": {
+        start = new Date(now);
+        start.setFullYear(start.getFullYear() - 1);
+        end = now;
+        break;
+      }
+
+      case "CUSTOM": {
+        if (startDate) {
+          start = new Date(`${startDate}T00:00:00+05:30`);
+        }
+
+        if (endDate) {
+          end = new Date(`${endDate}T00:00:00+05:30`);
+          end.setUTCDate(end.getUTCDate() + 1);
+        }
+
+        break;
+      }
+
+      default:
+        break;
+    }
+
+    if (start || end) {
+      where.createdAt = {};
+
+      if (start) {
+        where.createdAt.gte = start;
+      }
+
+      if (end) {
+        where.createdAt.lt = end;
+      }
+    }
+
+    // =====================================================
+    // 7. Fetch history
+    // =====================================================
+
+    const [
+      requests,
+      totalCount,
+      aggregate,
+      audioCount,
+      videoCount,
+    ] = await Promise.all([
+      prisma.liveInteractionRequest.findMany({
+        where,
+
+        include: {
+          astrologer: {
+            select: {
+              id: true,
+              name: true,
+              displayName: true,
+            },
+          },
+        },
+
+        orderBy: {
+          createdAt: "desc",
+        },
+
+        skip,
+        take: safeLimit,
+      }),
+
+      prisma.liveInteractionRequest.count({
+        where,
+      }),
+
+      prisma.liveInteractionRequest.aggregate({
+        where,
+
+        _sum: {
+          chargedCoins: true,
+        },
+      }),
+
+      prisma.liveInteractionRequest.count({
+        where: {
+          AND: [
+            where,
+            {
+              interactionType: "AUDIO",
+            },
+          ],
+        },
+      }),
+
+      prisma.liveInteractionRequest.count({
+        where: {
+          AND: [
+            where,
+            {
+              interactionType: "VIDEO",
+            },
+          ],
+        },
+      }),
+    ]);
+
+    // =====================================================
+    // 8. Format response
+    // =====================================================
+
+    const formattedData = requests.map((item) => ({
+      sessionId: item.id,
+
+      liveStreamId: item.liveStreamId,
+
+      astrologerId: item.astrologerId,
+
+      astrologerName:
+        item.astrologer?.displayName ||
+        item.astrologer?.name ||
+        "",
+
+      interactionType: item.interactionType,
+
+      status: item.status,
+
+      ratePerMin: Number(item.ratePerMin || 0),
+
+      chargedCoins: Number(item.chargedCoins || 0),
+
+      durationSeconds: item.durationSeconds || 0,
+
+      billableMinutes: item.billableMinutes || 0,
+
+      requestedAt: item.requestedAt,
+
+      acceptedAt: item.acceptedAt,
+
+      startedAt: item.startedAt,
+
+      endedAt: item.endedAt,
+
+      createdAt: item.createdAt,
+    }));
+
+    // =====================================================
+    // 9. Return response
+    // =====================================================
+
+    return {
+      data: formattedData,
+
+      totalCount,
+
+      currentPage: safePage,
+
+      totalPages: Math.ceil(totalCount / safeLimit),
+
+      totalCoinsDeducted: Number(
+        aggregate?._sum?.chargedCoins || 0
+      ),
+
+      totalAudioCalls: audioCount,
+
+      totalVideoCalls: videoCount,
+    };
+  } catch (error) {
+    console.error(
+      "getMyLiveInteractionHistory error:",
+      error
+    );
+
+    throw new Error(
+      error.message || "Failed to fetch live interaction history"
+    );
+  }
+},
   },
   //----------------start code for mutation ----------------------------
   Mutation: {
