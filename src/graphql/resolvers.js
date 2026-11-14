@@ -8728,6 +8728,7 @@ module.exports = {
 
           // Use offerPrice when available, otherwise regular price.
           const pricePerMinute = Number(pricing.offerPrice ?? pricing.price);
+          console.log("pricePerMinute--------:",pricePerMinute);
           console.log("comming pricePerMinute",pricePerMinute);
 
           if (!Number.isFinite(pricePerMinute) || pricePerMinute < 0) {
@@ -8753,9 +8754,11 @@ module.exports = {
             ((totalCoins * commissionPercent) / 100).toFixed(2),
           );
 
-          const astrologerEarning = Number(
-            (totalCoins - commissionCoins).toFixed(2),
-          );
+          // const astrologerEarning = Number(
+          //   (totalCoins - commissionCoins).toFixed(2),
+          // );
+
+          const astrologerEarning =commissionCoins;
 
           // =====================================================
           // 8. Deduct user wallet
@@ -8826,7 +8829,7 @@ module.exports = {
                 coins: totalCoins,
                 amount: totalCoins,
                 updatedBalance: updatedUserWallet.balanceCoins,
-                description: `${interactionType} live call charge (${billableMinutes} minute(s), ${durationSeconds} seconds)`,
+                description: `${interactionType} `,
               },
             });
 
@@ -8867,7 +8870,7 @@ module.exports = {
                   coins: astrologerEarning,
                   amount: astrologerEarning,
                   updatedBalance: astrologerWallet.balanceCoins,
-                  description: `${interactionType} live call earning after ${commissionPercent}% commission`,
+                  description: `${interactionType} `,
                 },
               });
             }
