@@ -84,22 +84,39 @@ const sendOTPService = async (countryCode, mobile) => {
 };
 
 // ================= VERIFY OTP =================
-const verifyOTPService = async (countryCode, mobile, otp, source) => {
+
+const verifyOTPService = async (
+  countryCode,
+  mobile,
+  otp,
+  source,
+  playerId = null
+) => {
   try {
     if (!countryCode || !mobile || !otp) {
       throw new Error("Country code, mobile and OTP required");
     }
 
-    // Create unique identifier
+    // =============================================
+    // 1. Create unique identifier
+    // =============================================
+
     const phoneKey = `${countryCode}-${mobile}`;
 
-    // Get stored OTP
+    // =============================================
+    // 2. Get stored OTP
+    // =============================================
+
     const storedOTP = await redis.get(`otp:${phoneKey}`);
 
     if (!storedOTP) {
       await logEvent("OTP_EXPIRED", phoneKey);
       throw new Error("OTP expired. Please request again.");
     }
+
+    // =============================================
+    // 3. Verify OTP
+    // =============================================
 
     if (storedOTP !== otp) {
       const failKey = `login_fail:${phoneKey}`;
@@ -121,9 +138,16 @@ const verifyOTPService = async (countryCode, mobile, otp, source) => {
       throw new Error("Invalid OTP");
     }
 
-    //  OTP VALID → CLEANUP
+    // =============================================
+    // 4. OTP valid - cleanup
+    // =============================================
+
     await redis.del(`otp:${phoneKey}`);
     await redis.del(`login_fail:${phoneKey}`);
+
+    // =============================================
+    // 5. Find existing user
+    // =============================================
 
     let user = await prisma.user.findUnique({
       where: {
@@ -136,35 +160,87 @@ const verifyOTPService = async (countryCode, mobile, otp, source) => {
 
     let isNewUser = false;
 
+    // =============================================
+    // 6. Create new user if not exists
+    // =============================================
+
     if (!user) {
       user = await prisma.user.create({
         data: {
           countryCode,
           mobile,
           source,
+          ...(playerId ? { playerId } : {}),
         },
       });
+
       isNewUser = true;
     }
 
+    // =============================================
+    // 7. Check deleted account
+    // =============================================
+
     if (user.isDeleted) {
-      throw new Error("Your account has been deleted. Please contact our support team.");
+      throw new Error(
+        "Your account has been deleted. Please contact our support team."
+      );
     }
+
+    // =============================================
+    // 8. Save/update OneSignal playerId
+    // =============================================
+
+    if (playerId && playerId !== user.playerId) {
+      user = await prisma.user.update({
+        where: {
+          id: user.id,
+        },
+        data: {
+          playerId: playerId,
+        },
+      });
+
+      console.log(
+        `[OTP Login] OneSignal playerId updated for user: ${user.id}`
+      );
+    }
+
+    // =============================================
+    // 9. Generate tokens
+    // =============================================
 
     const hasName = !!user.name;
 
     const accessToken = generateAccessToken(user);
     const refreshToken = generateRefreshToken(user);
 
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { refreshToken },
+    // =============================================
+    // 10. Save refresh token
+    // =============================================
+
+    user = await prisma.user.update({
+      where: {
+        id: user.id,
+      },
+      data: {
+        refreshToken,
+      },
     });
+
+    // =============================================
+    // 11. Login success event
+    // =============================================
 
     await logEvent("LOGIN_SUCCESS", phoneKey, {
       userId: user.id,
       isNewUser,
+      playerIdUpdated: !!playerId,
     });
+
+    // =============================================
+    // 12. Return response
+    // =============================================
 
     return {
       accessToken,
@@ -181,6 +257,7 @@ const verifyOTPService = async (countryCode, mobile, otp, source) => {
     throw new Error(error.message || "Failed to verify OTP");
   }
 };
+
 
 // ================= REFRESH TOKEN =================
 const refreshTokenService = async (token) => {

@@ -4994,7 +4994,7 @@ module.exports = {
         if (!otp) throw new Error("OTP required");
 
         const { accessToken, refreshToken, user, isNewUser, hasName } =
-          await verifyOTPService(countryCode, mobile, otp, source);
+          await verifyOTPService(countryCode, mobile, otp, source,playerId);
 
         if (res?.setHeader) {
           res.cookie("accessToken", accessToken, {

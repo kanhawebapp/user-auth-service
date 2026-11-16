@@ -157,7 +157,7 @@ model User {
   gender               Gender?
   birthDate            DateTime?
   birthTime            String?
-   birthPlace           String?
+  birthPlace           String?
   occupation           String?
   profileImage         String? 
   isActive             Boolean               @default(true)
@@ -183,6 +183,7 @@ model User {
   pujaPaymentOrders PujaPaymentOrder[]
   servicesBankPaymentLogs ServicesBankPaymentLog[]
   liveInteractionRequests LiveInteractionRequest[]
+  playerId String?
 
   @@unique([countryCode, mobile])
 }

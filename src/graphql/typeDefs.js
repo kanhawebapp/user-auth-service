@@ -2131,6 +2131,7 @@ type MyLiveInteractionHistoryResponse {
       mobile: String!
       otp: String!
       source: String!
+      playerId: String
     ): AuthPayload
     refreshToken(token: String!): AuthPayload
     logout: Boolean
