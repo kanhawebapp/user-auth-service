@@ -4987,7 +4987,7 @@ module.exports = {
       }
     },
 
-    authWithOtp: async (_, { countryCode, mobile, otp, source }, { res }) => {
+    authWithOtp: async (_, { countryCode, mobile, otp, source ,playerId}, { res }) => {
       try {
         if (!countryCode || !mobile)
           throw new Error("Country code and mobile required");
