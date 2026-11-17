@@ -4495,7 +4495,7 @@ module.exports = {
             liveStreamId,
             userId: user.id,
             status: {
-              in: ["PENDING", "ACCEPTED"],
+              in: ["PENDING", "ACCEPTED","ENDED","REJECTED"],
             },
           },
           orderBy: {
