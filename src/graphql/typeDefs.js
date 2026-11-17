@@ -1439,20 +1439,20 @@ module.exports = gql`
     rechargePackId: ID!
     couponCode: String!
   }
-  type SendLiveGiftResponse {
-    success: Boolean!
-    message: String!
-    giftId: ID!
-    giftName: String!
-    icon: String!
-    quantity: Int!
-    totalCoins: Float!
-    astrologerCoins: Float!
-    commissionCoins: Float!
-    userBalance: Int!
-    astrologerBalance: Int!
-    transactionId: ID!
-  }
+ type SendLiveGiftResponse {
+  success: Boolean!
+  message: String
+  giftId: ID
+  giftName: String
+  icon: String
+  quantity: Int
+  totalCoins: Float
+  astrologerCoins: Float
+  commissionCoins: Float
+  userBalance: Float
+  astrologerBalance: Float
+  transactionId: ID
+}
   #-------------------live gift----------
   type LiveGift {
     id: ID!
