@@ -1725,26 +1725,26 @@ module.exports = {
       }
     },
 
-    getGifts: async (_, __, context) => {
-      try {
-        const gifts = await prisma.gift.findMany({
-          where: {
-            status: "active",
-          },
-          orderBy: {
-            createdAt: "desc",
-          },
-        });
+   getGifts: async (_, __, context) => {
+  try {
+    const gifts = await prisma.gift.findMany({
+      where: {
+        status: "active",
+      },
+      orderBy: {
+        amount: "asc",
+      },
+    });
 
-        return {
-          data: gifts,
-          totalCount: gifts.length,
-        };
-      } catch (error) {
-        console.error("getGifts error:", error);
-        throw new Error(error.message || "Failed to fetch gifts");
-      }
-    },
+    return {
+      data: gifts,
+      totalCount: gifts.length,
+    };
+  } catch (error) {
+    console.error("getGifts error:", error);
+    throw new Error(error.message || "Failed to fetch gifts");
+  }
+},
 
     getBanners: async (_, { language }) => {
       try {
