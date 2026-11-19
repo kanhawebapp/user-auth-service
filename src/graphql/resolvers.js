@@ -539,7 +539,7 @@ module.exports = {
             name: astro.name,
             displayName: astro.displayName,
             experience: astro.experience,
-            rating: astro.rating,
+         rating: !astro.rating ? 4.3 : astro.rating,
             skills: astro.skills,
             languages: astro.languages,
             isBusy: astro.isBusy,
@@ -839,7 +839,7 @@ module.exports = {
 
               experience: astro.experience,
 
-              rating: astro.rating,
+              rating: !astro.rating ? 4.3 : astro.rating,
 
               skills: astro.skills,
 
