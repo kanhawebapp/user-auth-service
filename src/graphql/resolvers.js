@@ -564,7 +564,7 @@ module.exports = {
               type: p.type,
 
               price: specialOffer ? specialOffer.price : p.price,
-
+                  offerPrice: p.offerPrice ?? null, 
               originalPrice: p.price,
 
               commissionPercent: p.commissionPercent,
