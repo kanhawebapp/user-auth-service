@@ -601,51 +601,77 @@ getAstrologerListForUser: async (_, { searchInput }, context) => {
 
   const startedAt = Date.now();
 
+  console.log("\n======================================================");
+  console.log(`🚀 ${requestId} getAstrologerListForUser START`);
+  console.log("======================================================");
+
   try {
     // =====================================================
-    // STEP 1: AUTHENTICATION
+    // STEP 1: AUTH
     // =====================================================
+    console.log(`\n[${requestId}] STEP 1: Checking authentication`);
+
     if (!context?.user) {
-      console.error(`[${requestId}] Unauthorized`);
+      console.error(`[${requestId}] ❌ Unauthorized`);
       throw new Error("Unauthorized");
     }
 
     const userId = context.user.id;
 
-    const {
-      query,
-      sortField,
-      sortOrder,
-      category,
-      type,
-    } = searchInput || {};
+    console.log(`[${requestId}] ✅ User authenticated`);
+    console.log(`[${requestId}] userId:`, userId);
 
     // =====================================================
-    // STEP 2: PAGINATION
+    // STEP 2: INPUT
     // =====================================================
-    const pageNumber = Math.max(
-      1,
-      Number(searchInput?.page) || 1
+    console.log(`\n[${requestId}] STEP 2: Processing searchInput`);
+
+    console.log(
+      `[${requestId}] searchInput:`,
+      JSON.stringify(searchInput || {}, null, 2),
     );
+
+    const { query, sortField, sortOrder, category, type } =
+      searchInput || {};
+
+    // =====================================================
+    // STEP 3: PAGINATION
+    // =====================================================
+    const pageNumber = Math.max(1, Number(searchInput?.page) || 1);
 
     const limitNumber = Math.min(
       100,
-      Math.max(1, Number(searchInput?.limit) || 10)
+      Math.max(1, Number(searchInput?.limit) || 10),
     );
 
     const skip = (pageNumber - 1) * limitNumber;
 
+    console.log(`\n[${requestId}] STEP 3: Pagination`);
+
+    console.log(`[${requestId}] Pagination:`, {
+      pageNumber,
+      limitNumber,
+      skip,
+    });
+
     // =====================================================
-    // STEP 3: SORTING
-    // ONLINE FIRST, THEN SELECTED SORT FIELD
+    // STEP 4: ORDER BY
+    // Priority:
+    // 1. Online first
+    // 2. Requested service active first
+    // 3. Not busy first
+    // 4. Rating / Experience
     // =====================================================
+    console.log(`\n[${requestId}] STEP 4: Building orderBy`);
+
+    const normalizedType = String(type || "").trim().toUpperCase();
 
     const normalizedSortField = String(sortField || "")
       .trim()
       .toUpperCase();
 
     const normalizedSortOrder =
-      String(sortOrder || "DESC").toUpperCase() === "ASC"
+      String(sortOrder || "DESC").trim().toUpperCase() === "ASC"
         ? "asc"
         : "desc";
 
@@ -656,15 +682,33 @@ getAstrologerListForUser: async (_, { searchInput }, context) => {
 
     const secondarySortField = sortMap[normalizedSortField];
 
-    // Online astrologers will ALWAYS appear before offline.
-    // Selected sorting will be applied within both groups.
     const orderBy = [
+      // First priority: online astrologers
       {
         isOnline: "desc",
       },
 
-      // If user selects rating or experience, apply it.
-      // Otherwise, show newest astrologers first.
+      // Second priority: requested service availability
+      ...(normalizedType === "CHAT"
+        ? [
+            {
+              isChatActive: "desc",
+            },
+          ]
+        : normalizedType === "CALL"
+          ? [
+              {
+                isCallActive: "desc",
+              },
+            ]
+          : []),
+
+      // Third priority: available astrologers before busy astrologers
+      {
+        isBusy: "asc",
+      },
+
+      // Fourth priority: selected sorting field
       secondarySortField
         ? {
             [secondarySortField]: normalizedSortOrder,
@@ -673,23 +717,32 @@ getAstrologerListForUser: async (_, { searchInput }, context) => {
             createdAt: "desc",
           },
 
-      // Consistent ordering for equal values.
+      // Stable ordering
       {
         id: "asc",
       },
     ];
 
-    console.log(`[${requestId}] Sorting configuration:`, {
-      sortField: normalizedSortField || "DEFAULT",
-      sortOrder: normalizedSortOrder,
-      orderBy,
-    });
+    console.log(
+      `[${requestId}] normalizedType:`,
+      normalizedType,
+    );
+
+    console.log(
+      `[${requestId}] orderBy:`,
+      JSON.stringify(orderBy, null, 2),
+    );
 
     // =====================================================
-    // STEP 4: SEARCH FILTER
+    // STEP 5: WHERE
     // =====================================================
+    console.log(`\n[${requestId}] STEP 5: Building WHERE`);
+
     const AND = [];
 
+    // -----------------------------------------------------
+    // SEARCH QUERY
+    // -----------------------------------------------------
     if (query && String(query).trim()) {
       const searchQuery = String(query).trim();
 
@@ -720,9 +773,9 @@ getAstrologerListForUser: async (_, { searchInput }, context) => {
       });
     }
 
-    // =====================================================
-    // STEP 5: CATEGORY FILTER
-    // =====================================================
+    // -----------------------------------------------------
+    // CATEGORY
+    // -----------------------------------------------------
     if (category && String(category).toLowerCase() !== "all") {
       AND.push({
         OR: [
@@ -740,29 +793,46 @@ getAstrologerListForUser: async (_, { searchInput }, context) => {
       });
     }
 
-    // =====================================================
-    // STEP 6: WHERE CONDITION
-    // =====================================================
-    const where = {
-      isDeleted: false,
-
-      ...(AND.length > 0
+    const where =
+      AND.length > 0
         ? {
             AND,
           }
-        : {}),
-    };
+        : {};
+
+    console.log(
+      `[${requestId}] FINAL WHERE:`,
+      JSON.stringify(where, null, 2),
+    );
 
     // =====================================================
-    // STEP 7: TOTAL COUNT
+    // STEP 6: COUNT
     // =====================================================
+    console.log(`\n[${requestId}] STEP 6: BEFORE astrologer.count()`);
+
+    const countStart = Date.now();
+
     const totalCount = await prisma.astrologer.count({
       where,
     });
 
+    console.log(`[${requestId}] ✅ astrologer.count() SUCCESS`);
+
+    console.log(`[${requestId}] totalCount:`, totalCount);
+
+    console.log(
+      `[${requestId}] count duration:`,
+      Date.now() - countStart,
+      "ms",
+    );
+
     // =====================================================
-    // STEP 8: FETCH ASTROLOGERS
+    // STEP 7: ASTROLOGER FIND MANY
     // =====================================================
+    console.log(`\n[${requestId}] STEP 7: BEFORE astrologer.findMany()`);
+
+    const findStart = Date.now();
+
     const astrologers = await prisma.astrologer.findMany({
       where,
 
@@ -787,37 +857,70 @@ getAstrologerListForUser: async (_, { searchInput }, context) => {
       },
     });
 
-    console.log(`[${requestId}] Astrologers fetched:`, {
-      count: astrologers.length,
-      totalCount,
-      pageNumber,
-      limitNumber,
-    });
+    console.log(`[${requestId}] ✅ astrologer.findMany() SUCCESS`);
+
+    console.log(`[${requestId}] Astrologers count:`, astrologers.length);
+
+    console.log(
+      `[${requestId}] findMany duration:`,
+      Date.now() - findStart,
+      "ms",
+    );
 
     // =====================================================
-    // STEP 9: FETCH ASTROLOGER IDS
+    // STEP 8: ASTROLOGER IDS
     // =====================================================
+    console.log(`\n[${requestId}] STEP 8: Building astrologerIds`);
+
     const astrologerIds = astrologers.map((astro) => astro.id);
 
-    // =====================================================
-    // STEP 10: PRICING CONFIGURATION AND USER OFFER USAGE
-    // =====================================================
-    const [pricingConfig, usage] = await Promise.all([
-      prisma.pricingConfig.findFirst(),
-
-      prisma.userOfferUsage.findUnique({
-        where: {
-          userId,
-        },
-      }),
-    ]);
+    console.log(
+      `[${requestId}] astrologerIds count:`,
+      astrologerIds.length,
+    );
 
     // =====================================================
-    // STEP 11: FETCH ACTIVE OFFERS
+    // STEP 9: PRICING CONFIG
+    // =====================================================
+    console.log(
+      `\n[${requestId}] STEP 9: BEFORE pricingConfig.findFirst()`,
+    );
+
+    const pricingConfig = await prisma.pricingConfig.findFirst();
+
+    console.log(`[${requestId}] ✅ pricingConfig.findFirst() SUCCESS`);
+
+    console.log(`[${requestId}] pricingConfig exists:`, !!pricingConfig);
+
+    // =====================================================
+    // STEP 10: USER OFFER USAGE
+    // =====================================================
+    console.log(
+      `\n[${requestId}] STEP 10: BEFORE userOfferUsage.findUnique()`,
+    );
+
+    const usage = await prisma.userOfferUsage.findUnique({
+      where: {
+        userId,
+      },
+    });
+
+    console.log(`[${requestId}] ✅ userOfferUsage.findUnique() SUCCESS`);
+
+    console.log(`[${requestId}] usage:`, usage);
+
+    // =====================================================
+    // STEP 11: ASTROLOGER OFFERS
     // =====================================================
     let activeOffers = [];
 
     if (astrologerIds.length > 0) {
+      console.log(
+        `\n[${requestId}] STEP 11: BEFORE astrologerOffer.findMany()`,
+      );
+
+      const offerStart = Date.now();
+
       activeOffers = await prisma.astrologerOffer.findMany({
         where: {
           astrologerId: {
@@ -831,15 +934,30 @@ getAstrologerListForUser: async (_, { searchInput }, context) => {
           offer: true,
         },
       });
+
+      console.log(`[${requestId}] ✅ astrologerOffer.findMany() SUCCESS`);
+
+      console.log(
+        `[${requestId}] Active offers count:`,
+        activeOffers.length,
+      );
+
+      console.log(
+        `[${requestId}] Offer query duration:`,
+        Date.now() - offerStart,
+        "ms",
+      );
     } else {
       console.log(
-        `[${requestId}] No astrologers found, skipping offer query`
+        `[${requestId}] No astrologers found, skipping offer query`,
       );
     }
 
     // =====================================================
-    // STEP 12: CREATE OFFER MAP
+    // STEP 12: OFFER MAP
     // =====================================================
+    console.log(`\n[${requestId}] STEP 12: Building offerMap`);
+
     const offerMap = new Map();
 
     for (const item of activeOffers) {
@@ -848,30 +966,46 @@ getAstrologerListForUser: async (_, { searchInput }, context) => {
       }
     }
 
+    console.log(`[${requestId}] offerMap size:`, offerMap.size);
+
     // =====================================================
-    // STEP 13: FORMAT ASTROLOGER RESPONSE
+    // STEP 13: MAP ASTROLOGERS
     // =====================================================
-    const data = astrologers.map((astro) => {
+    console.log(`\n[${requestId}] STEP 13: Mapping astrologers`);
+
+    const data = astrologers.map((astro, index) => {
+      console.log(
+        `[${requestId}] Mapping astrologer ${
+          index + 1
+        }/${astrologers.length}`,
+      );
+
+      console.log(`[${requestId}] Astrologer:`, {
+        id: astro.id,
+        name: astro.name,
+      });
+
       try {
         const specialOffer = offerMap.get(astro.id);
 
-        // =================================================
-        // PRICING CALCULATION
-        // =================================================
         const pricing = Array.isArray(astro.pricing)
           ? astro.pricing.map((p) => {
               let finalPrice = p.price;
 
               let appliedOffer = null;
 
-              // 1. SPECIAL ASTROLOGER OFFER
+              // =================================================
+              // 1. SPECIAL OFFER
+              // =================================================
               if (specialOffer) {
                 finalPrice = specialOffer.price;
 
                 appliedOffer = specialOffer.offerName;
               }
 
-              // 2. FIRST TIME OFFER
+              // =================================================
+              // 2. FIRST OFFER
+              // =================================================
               else if (
                 pricingConfig?.isFirstOfferEnabled &&
                 !usage?.usedFirst
@@ -884,7 +1018,9 @@ getAstrologerListForUser: async (_, { searchInput }, context) => {
                 appliedOffer = "FIRST_TIME_OFFER";
               }
 
-              // 3. SECOND TIME OFFER
+              // =================================================
+              // 3. SECOND OFFER
+              // =================================================
               else if (
                 pricingConfig?.isSecondOfferEnabled &&
                 usage?.usedFirst &&
@@ -898,7 +1034,9 @@ getAstrologerListForUser: async (_, { searchInput }, context) => {
                 appliedOffer = "SECOND_TIME_OFFER";
               }
 
+              // =================================================
               // 4. GLOBAL OFFER
+              // =================================================
               else if (pricingConfig?.isGlobalOfferEnabled) {
                 finalPrice =
                   p.type === "CHAT"
@@ -926,9 +1064,6 @@ getAstrologerListForUser: async (_, { searchInput }, context) => {
             })
           : [];
 
-        // =================================================
-        // ASTROLOGER RESPONSE
-        // =================================================
         return {
           id: astro.id,
 
@@ -976,21 +1111,20 @@ getAstrologerListForUser: async (_, { searchInput }, context) => {
         };
       } catch (mapError) {
         console.error(
-          `[${requestId}] ERROR mapping astrologer ${astro.id}`
+          `[${requestId}] ❌ ERROR mapping astrologer ${astro.id}`,
         );
 
-        console.error(
-          `[${requestId}] Mapping error:`,
-          mapError
-        );
+        console.error(`[${requestId}] Mapping error:`, mapError);
 
         throw mapError;
       }
     });
 
     // =====================================================
-    // STEP 14: PAGINATION RESPONSE
+    // STEP 14: RESPONSE
     // =====================================================
+    console.log(`\n[${requestId}] STEP 14: Preparing response`);
+
     const totalPages = Math.ceil(totalCount / limitNumber);
 
     const response = {
@@ -1003,28 +1137,40 @@ getAstrologerListForUser: async (_, { searchInput }, context) => {
       totalPages,
     };
 
-    console.log(`[${requestId}] SUCCESS`, {
+    console.log(`[${requestId}] Response:`, {
       dataCount: data.length,
+
       totalCount,
+
       currentPage: pageNumber,
+
       totalPages,
-      duration: `${Date.now() - startedAt}ms`,
     });
 
+    console.log("\n======================================================");
+
+    console.log(`🎉 ${requestId} getAstrologerListForUser SUCCESS`);
+
+    console.log(
+      `[${requestId}] Total duration:`,
+      Date.now() - startedAt,
+      "ms",
+    );
+
+    console.log("======================================================");
+
     return response;
-
   } catch (error) {
+    // =====================================================
+    // ERROR
+    // =====================================================
     console.error(
-      "\n======================================================"
+      "\n======================================================",
     );
 
-    console.error(
-      `🔥 ${requestId} getAstrologerListForUser ERROR`
-    );
+    console.error(`🔥 ${requestId} getAstrologerListForUser ERROR`);
 
-    console.error(
-      "======================================================"
-    );
+    console.error("======================================================");
 
     console.error(`[${requestId}] Error name:`, error?.name);
 
@@ -1039,12 +1185,10 @@ getAstrologerListForUser: async (_, { searchInput }, context) => {
     console.error(
       `[${requestId}] Total duration:`,
       Date.now() - startedAt,
-      "ms"
+      "ms",
     );
 
-    console.error(
-      "======================================================"
-    );
+    console.error("======================================================");
 
     throw error;
   }
