@@ -603,9 +603,8 @@ getAstrologerListForUser: async (_, { searchInput }, context) => {
 
   try {
     // =====================================================
-    // 1. AUTHENTICATION
+    // STEP 1: AUTHENTICATION
     // =====================================================
-
     if (!context?.user) {
       console.error(`[${requestId}] Unauthorized`);
       throw new Error("Unauthorized");
@@ -621,6 +620,9 @@ getAstrologerListForUser: async (_, { searchInput }, context) => {
       type,
     } = searchInput || {};
 
+    // =====================================================
+    // STEP 2: PAGINATION
+    // =====================================================
     const pageNumber = Math.max(
       1,
       Number(searchInput?.page) || 1
@@ -634,10 +636,9 @@ getAstrologerListForUser: async (_, { searchInput }, context) => {
     const skip = (pageNumber - 1) * limitNumber;
 
     // =====================================================
-    // 2. SORTING
-    // ONLINE ASTROLOGERS ALWAYS FIRST
+    // STEP 3: SORTING
+    // ONLINE FIRST, THEN SELECTED SORT FIELD
     // =====================================================
-
     const normalizedSortField = String(sortField || "").toUpperCase();
 
     const normalizedSortOrder =
@@ -653,12 +654,12 @@ getAstrologerListForUser: async (_, { searchInput }, context) => {
     const secondarySortField = sortMap[normalizedSortField];
 
     const orderBy = [
-      // First priority: Online astrologers
+      // Priority 1: Online astrologers first
       {
         isOnline: "desc",
       },
 
-      // Second priority: Selected sorting
+      // Priority 2: Selected sorting within online/offline groups
       secondarySortField
         ? {
             [secondarySortField]: normalizedSortOrder,
@@ -667,18 +668,17 @@ getAstrologerListForUser: async (_, { searchInput }, context) => {
             createdAt: "desc",
           },
 
-      // Third priority: Consistent ordering
+      // Priority 3: Consistent ordering when values are equal
       {
         id: "asc",
       },
     ];
 
-    console.log(`[${requestId}] FINAL ORDER BY:`, orderBy);
+    console.log(`[${requestId}] Sorting configuration:`, orderBy);
 
     // =====================================================
-    // 3. SEARCH AND CATEGORY FILTER
+    // STEP 4: SEARCH FILTER
     // =====================================================
-
     const AND = [];
 
     if (query && String(query).trim()) {
@@ -711,6 +711,9 @@ getAstrologerListForUser: async (_, { searchInput }, context) => {
       });
     }
 
+    // =====================================================
+    // STEP 5: CATEGORY FILTER
+    // =====================================================
     if (category && String(category).toLowerCase() !== "all") {
       AND.push({
         OR: [
@@ -728,6 +731,9 @@ getAstrologerListForUser: async (_, { searchInput }, context) => {
       });
     }
 
+    // =====================================================
+    // STEP 6: WHERE CONDITION
+    // =====================================================
     const where = {
       isDeleted: false,
 
@@ -739,17 +745,15 @@ getAstrologerListForUser: async (_, { searchInput }, context) => {
     };
 
     // =====================================================
-    // 4. TOTAL COUNT
+    // STEP 7: TOTAL COUNT
     // =====================================================
-
     const totalCount = await prisma.astrologer.count({
       where,
     });
 
     // =====================================================
-    // 5. FETCH ASTROLOGERS
+    // STEP 8: FETCH ASTROLOGERS
     // =====================================================
-
     const astrologers = await prisma.astrologer.findMany({
       where,
 
@@ -774,29 +778,21 @@ getAstrologerListForUser: async (_, { searchInput }, context) => {
       },
     });
 
-    console.log(
-      `[${requestId}] ASTROLOGER ORDER:`,
-      astrologers.map((astro) => ({
-        id: astro.id,
-        name: astro.name,
-        isOnline: astro.isOnline,
-        rating: astro.rating,
-        experience: astro.experience,
-      }))
-    );
+    console.log(`[${requestId}] Astrologers fetched:`, {
+      count: astrologers.length,
+      totalCount,
+      pageNumber,
+      limitNumber,
+    });
 
     // =====================================================
-    // 6. GET ASTROLOGER IDS
+    // STEP 9: FETCH ASTROLOGER IDS
     // =====================================================
-
-    const astrologerIds = astrologers.map(
-      (astro) => astro.id
-    );
+    const astrologerIds = astrologers.map((astro) => astro.id);
 
     // =====================================================
-    // 7. PRICING CONFIGURATION AND USER OFFER USAGE
+    // STEP 10: PRICING CONFIGURATION AND USER OFFER USAGE
     // =====================================================
-
     const [pricingConfig, usage] = await Promise.all([
       prisma.pricingConfig.findFirst(),
 
@@ -808,9 +804,8 @@ getAstrologerListForUser: async (_, { searchInput }, context) => {
     ]);
 
     // =====================================================
-    // 8. FETCH ACTIVE OFFERS
+    // STEP 11: FETCH ACTIVE OFFERS
     // =====================================================
-
     let activeOffers = [];
 
     if (astrologerIds.length > 0) {
@@ -827,160 +822,169 @@ getAstrologerListForUser: async (_, { searchInput }, context) => {
           offer: true,
         },
       });
+    } else {
+      console.log(
+        `[${requestId}] No astrologers found, skipping offer query`
+      );
     }
 
     // =====================================================
-    // 9. CREATE OFFER MAP
+    // STEP 12: CREATE OFFER MAP
     // =====================================================
-
     const offerMap = new Map();
 
     for (const item of activeOffers) {
       if (!offerMap.has(item.astrologerId)) {
-        offerMap.set(
-          item.astrologerId,
-          item.offer
-        );
+        offerMap.set(item.astrologerId, item.offer);
       }
     }
 
     // =====================================================
-    // 10. MAP ASTROLOGER DATA
+    // STEP 13: FORMAT ASTROLOGER RESPONSE
     // =====================================================
+    const data = astrologers.map((astro, index) => {
+      try {
+        const specialOffer = offerMap.get(astro.id);
 
-    const data = astrologers.map((astro) => {
-      const specialOffer = offerMap.get(astro.id);
+        // =================================================
+        // PRICING CALCULATION
+        // =================================================
+        const pricing = Array.isArray(astro.pricing)
+          ? astro.pricing.map((p) => {
+              let finalPrice = p.price;
 
-      const pricing = Array.isArray(astro.pricing)
-        ? astro.pricing.map((p) => {
-            let finalPrice = p.price;
+              let appliedOffer = null;
 
-            let appliedOffer = null;
+              // 1. SPECIAL ASTROLOGER OFFER
+              if (specialOffer) {
+                finalPrice = specialOffer.price;
 
-            // ASTROLOGER SPECIAL OFFER
-            if (specialOffer) {
-              finalPrice = specialOffer.price;
+                appliedOffer = specialOffer.offerName;
+              }
 
-              appliedOffer = specialOffer.offerName;
-            }
+              // 2. FIRST TIME OFFER
+              else if (
+                pricingConfig?.isFirstOfferEnabled &&
+                !usage?.usedFirst
+              ) {
+                finalPrice =
+                  p.type === "CHAT"
+                    ? pricingConfig.firstChatPrice
+                    : pricingConfig.firstCallPrice;
 
-            // FIRST TIME OFFER
-            else if (
-              pricingConfig?.isFirstOfferEnabled &&
-              !usage?.usedFirst
-            ) {
-              finalPrice =
-                p.type === "CHAT"
-                  ? pricingConfig.firstChatPrice
-                  : pricingConfig.firstCallPrice;
+                appliedOffer = "FIRST_TIME_OFFER";
+              }
 
-              appliedOffer = "FIRST_TIME_OFFER";
-            }
+              // 3. SECOND TIME OFFER
+              else if (
+                pricingConfig?.isSecondOfferEnabled &&
+                usage?.usedFirst &&
+                !usage?.usedSecond
+              ) {
+                finalPrice =
+                  p.type === "CHAT"
+                    ? pricingConfig.secondChatPrice
+                    : pricingConfig.secondCallPrice;
 
-            // SECOND TIME OFFER
-            else if (
-              pricingConfig?.isSecondOfferEnabled &&
-              usage?.usedFirst &&
-              !usage?.usedSecond
-            ) {
-              finalPrice =
-                p.type === "CHAT"
-                  ? pricingConfig.secondChatPrice
-                  : pricingConfig.secondCallPrice;
+                appliedOffer = "SECOND_TIME_OFFER";
+              }
 
-              appliedOffer = "SECOND_TIME_OFFER";
-            }
+              // 4. GLOBAL OFFER
+              else if (pricingConfig?.isGlobalOfferEnabled) {
+                finalPrice =
+                  p.type === "CHAT"
+                    ? pricingConfig.globalChatPrice
+                    : pricingConfig.globalCallPrice;
 
-            // GLOBAL OFFER
-            else if (
-              pricingConfig?.isGlobalOfferEnabled
-            ) {
-              finalPrice =
-                p.type === "CHAT"
-                  ? pricingConfig.globalChatPrice
-                  : pricingConfig.globalCallPrice;
+                appliedOffer = "GLOBAL_OFFER";
+              }
 
-              appliedOffer = "GLOBAL_OFFER";
-            }
+              return {
+                type: p.type,
 
-            return {
-              type: p.type,
+                price: finalPrice,
 
-              price: finalPrice,
+                originalPrice: p.price,
 
-              originalPrice: p.price,
+                offerPrice: p.offerPrice ?? null,
 
-              offerPrice: p.offerPrice ?? null,
+                appliedOffer,
 
-              appliedOffer,
+                commissionPercent: p.commissionPercent,
 
-              commissionPercent: p.commissionPercent,
+                isActive: p.isActive,
+              };
+            })
+          : [];
 
-              isActive: p.isActive,
-            };
-          })
-        : [];
+        // =================================================
+        // ASTROLOGER RESPONSE
+        // =================================================
+        return {
+          id: astro.id,
 
-      return {
-        id: astro.id,
+          profilePic: astro.profilePic,
 
-        profilePic: astro.profilePic,
+          name: astro.name,
 
-        name: astro.name,
+          tags: astro.tags,
 
-        tags: astro.tags,
+          displayName: astro.displayName,
 
-        displayName: astro.displayName,
+          experience: astro.experience,
 
-        experience: astro.experience,
+          rating: astro.rating,
 
-        rating: !astro.rating ? 4.3 : astro.rating,
+          skills: astro.skills,
 
-        skills: astro.skills,
+          problems: astro.problems,
 
-        problems: astro.problems,
+          languages: astro.languages,
 
-        languages: astro.languages,
+          isBusy: astro.isBusy,
 
-        isBusy: astro.isBusy,
+          isOnline: astro.isOnline,
 
-        isOnline: astro.isOnline,
+          isChatActive: astro.isChatActive,
 
-        isChatActive: astro.isChatActive,
+          isCallActive: astro.isCallActive,
 
-        isCallActive: astro.isCallActive,
+          isLiveActive: astro.isLiveActive,
 
-        isLiveActive: astro.isLiveActive,
+          activeOffer: specialOffer
+            ? {
+                id: specialOffer.id,
 
-        activeOffer: specialOffer
-          ? {
-              id: specialOffer.id,
+                offerName: specialOffer.offerName,
 
-              offerName: specialOffer.offerName,
+                price: specialOffer.price,
 
-              price: specialOffer.price,
+                description: specialOffer.description,
+              }
+            : null,
 
-              description: specialOffer.description,
-            }
-          : null,
+          pricing,
+        };
+      } catch (mapError) {
+        console.error(
+          `[${requestId}] ERROR mapping astrologer ${astro.id}`
+        );
 
-        pricing,
-      };
+        console.error(
+          `[${requestId}] Mapping error:`,
+          mapError
+        );
+
+        throw mapError;
+      }
     });
 
     // =====================================================
-    // 11. RESPONSE
+    // STEP 14: PAGINATION RESPONSE
     // =====================================================
+    const totalPages = Math.ceil(totalCount / limitNumber);
 
-    const totalPages = Math.ceil(
-      totalCount / limitNumber
-    );
-
-    console.log(
-      `[${requestId}] Completed in ${Date.now() - startedAt}ms`
-    );
-
-    return {
+    const response = {
       data,
 
       totalCount,
@@ -990,10 +994,47 @@ getAstrologerListForUser: async (_, { searchInput }, context) => {
       totalPages,
     };
 
+    console.log(`[${requestId}] SUCCESS`, {
+      dataCount: data.length,
+      totalCount,
+      currentPage: pageNumber,
+      totalPages,
+      duration: `${Date.now() - startedAt}ms`,
+    });
+
+    return response;
+
   } catch (error) {
     console.error(
-      `[${requestId}] getAstrologerListForUser ERROR:`,
-      error
+      "\n======================================================"
+    );
+
+    console.error(
+      `🔥 ${requestId} getAstrologerListForUser ERROR`
+    );
+
+    console.error(
+      "======================================================"
+    );
+
+    console.error(`[${requestId}] Error name:`, error?.name);
+
+    console.error(`[${requestId}] Error message:`, error?.message);
+
+    console.error(`[${requestId}] Error code:`, error?.code);
+
+    console.error(`[${requestId}] Error meta:`, error?.meta);
+
+    console.error(`[${requestId}] Error stack:`, error?.stack);
+
+    console.error(
+      `[${requestId}] Total duration:`,
+      Date.now() - startedAt,
+      "ms"
+    );
+
+    console.error(
+      "======================================================"
     );
 
     throw error;
