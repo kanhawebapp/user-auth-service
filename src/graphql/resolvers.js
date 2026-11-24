@@ -47,6 +47,353 @@ async function logEvent({ userId, action, details }) {
   }
 }
 
+const getAstrologerList = async (searchInput = {}, userId = null) => {
+  const { query, sortField, sortOrder, category, type } = searchInput;
+
+  // =====================================================
+  // STEP 1: PAGINATION
+  // =====================================================
+  const pageNumber = Math.max(1, Number(searchInput.page) || 1);
+
+  const limitNumber = Math.min(
+    100,
+    Math.max(1, Number(searchInput.limit) || 10),
+  );
+
+  const skip = (pageNumber - 1) * limitNumber;
+
+  // =====================================================
+  // STEP 2: SORTING
+  // Priority:
+  // 1. Online astrologers first
+  // 2. Requested rating / experience sorting
+  // 3. Stable ordering
+  // =====================================================
+  const normalizedSortField = String(sortField || "")
+    .trim()
+    .toUpperCase();
+
+  const normalizedSortOrder =
+    String(sortOrder || "DESC")
+      .trim()
+      .toUpperCase() === "ASC"
+      ? "asc"
+      : "desc";
+
+  const sortMap = {
+    EXPERIENCE: "experience",
+    RATING: "rating",
+  };
+
+  const secondarySortField = sortMap[normalizedSortField];
+
+  const orderBy = [
+    {
+      isOnline: "desc",
+    },
+
+    secondarySortField
+      ? {
+          [secondarySortField]: normalizedSortOrder,
+        }
+      : {
+          createdAt: "desc",
+        },
+
+    {
+      id: "asc",
+    },
+  ];
+
+  // =====================================================
+  // STEP 3: WHERE CONDITIONS
+  // =====================================================
+  const AND = [];
+
+  // Search query
+  if (query && String(query).trim()) {
+    const searchQuery = String(query).trim();
+
+    AND.push({
+      OR: [
+        {
+          name: {
+            contains: searchQuery,
+            mode: "insensitive",
+          },
+        },
+        {
+          skills: {
+            has: searchQuery,
+          },
+        },
+        {
+          problems: {
+            has: searchQuery,
+          },
+        },
+        {
+          languages: {
+            has: searchQuery,
+          },
+        },
+      ],
+    });
+  }
+
+  // Category filter
+  if (category && String(category).toLowerCase() !== "all") {
+    AND.push({
+      OR: [
+        {
+          skills: {
+            has: category,
+          },
+        },
+        {
+          problems: {
+            has: category,
+          },
+        },
+      ],
+    });
+  }
+
+  const where = {
+    isDeleted: false,
+
+    ...(AND.length > 0
+      ? {
+          AND,
+        }
+      : {}),
+  };
+
+  // =====================================================
+  // STEP 4: FETCH ASTROLOGERS AND COUNT
+  // =====================================================
+  const [astrologers, totalCount] = await Promise.all([
+    prisma.astrologer.findMany({
+      where,
+      orderBy,
+      skip,
+      take: limitNumber,
+
+      include: {
+        pricing: {
+          where: {
+            isActive: true,
+
+            ...(type
+              ? {
+                  type,
+                }
+              : {}),
+          },
+        },
+      },
+    }),
+
+    prisma.astrologer.count({
+      where,
+    }),
+  ]);
+
+  // =====================================================
+  // STEP 5: ASTROLOGER IDS
+  // =====================================================
+  const astrologerIds = astrologers.map((astro) => astro.id);
+
+  // =====================================================
+  // STEP 6: PRICING CONFIG
+  // =====================================================
+  const pricingConfig = await prisma.pricingConfig.findFirst();
+
+  // =====================================================
+  // STEP 7: USER OFFER USAGE
+  //
+  // Auth API: Fetch usage using authenticated userId.
+  // Public API: No userId, so usage remains null.
+  // =====================================================
+  const usage = userId
+    ? await prisma.userOfferUsage.findUnique({
+        where: {
+          userId,
+        },
+      })
+    : null;
+
+  // =====================================================
+  // STEP 8: ASTROLOGER OFFERS
+  // =====================================================
+  let activeOffers = [];
+
+  if (astrologerIds.length > 0) {
+    activeOffers = await prisma.astrologerOffer.findMany({
+      where: {
+        astrologerId: {
+          in: astrologerIds,
+        },
+
+        isActive: true,
+      },
+
+      include: {
+        offer: true,
+      },
+    });
+  }
+
+  // =====================================================
+  // STEP 9: OFFER MAP
+  // =====================================================
+  const offerMap = new Map();
+
+  for (const item of activeOffers) {
+    if (!offerMap.has(item.astrologerId)) {
+      offerMap.set(item.astrologerId, item.offer);
+    }
+  }
+
+  // =====================================================
+  // STEP 10: MAP ASTROLOGERS
+  // =====================================================
+  const data = astrologers.map((astro) => {
+    const specialOffer = offerMap.get(astro.id);
+
+    const pricing = Array.isArray(astro.pricing)
+      ? astro.pricing.map((p) => {
+          let finalPrice = p.price;
+
+          let appliedOffer = null;
+
+          // ---------------------------------------------
+          // 1. SPECIAL OFFER
+          // ---------------------------------------------
+          if (specialOffer) {
+            finalPrice = specialOffer.price;
+            appliedOffer = specialOffer.offerName;
+          }
+
+          // ---------------------------------------------
+          // 2. FIRST OFFER
+          // ---------------------------------------------
+          else if (pricingConfig?.isFirstOfferEnabled && !usage?.usedFirst) {
+            finalPrice =
+              p.type === "CHAT"
+                ? pricingConfig.firstChatPrice
+                : pricingConfig.firstCallPrice;
+
+            appliedOffer = "FIRST_TIME_OFFER";
+          }
+
+          // ---------------------------------------------
+          // 3. SECOND OFFER
+          // ---------------------------------------------
+          else if (
+            pricingConfig?.isSecondOfferEnabled &&
+            usage?.usedFirst &&
+            !usage?.usedSecond
+          ) {
+            finalPrice =
+              p.type === "CHAT"
+                ? pricingConfig.secondChatPrice
+                : pricingConfig.secondCallPrice;
+
+            appliedOffer = "SECOND_TIME_OFFER";
+          }
+
+          // ---------------------------------------------
+          // 4. GLOBAL OFFER
+          // ---------------------------------------------
+          else if (pricingConfig?.isGlobalOfferEnabled) {
+            finalPrice =
+              p.type === "CHAT"
+                ? pricingConfig.globalChatPrice
+                : pricingConfig.globalCallPrice;
+
+            appliedOffer = "GLOBAL_OFFER";
+          }
+
+          return {
+            type: p.type,
+
+            price: finalPrice,
+
+            originalPrice: p.price,
+
+            offerPrice: p.offerPrice ?? null,
+
+            appliedOffer,
+
+            commissionPercent: p.commissionPercent,
+
+            isActive: p.isActive,
+          };
+        })
+      : [];
+
+    return {
+      id: astro.id,
+
+      profilePic: astro.profilePic,
+
+      name: astro.name,
+
+      tags: astro.tags,
+
+      displayName: astro.displayName,
+
+      experience: astro.experience,
+
+      rating: !astro.rating ? 4.3 : astro.rating,
+
+      skills: astro.skills,
+
+      problems: astro.problems,
+
+      languages: astro.languages,
+
+      isBusy: astro.isBusy,
+
+      isOnline: astro.isOnline,
+
+      isChatActive: astro.isChatActive,
+
+      isCallActive: astro.isCallActive,
+
+      isLiveActive: astro.isLiveActive,
+
+      activeOffer: specialOffer
+        ? {
+            id: specialOffer.id,
+
+            offerName: specialOffer.offerName,
+
+            price: specialOffer.price,
+
+            description: specialOffer.description,
+          }
+        : null,
+
+      pricing,
+    };
+  });
+
+  // =====================================================
+  // STEP 11: RESPONSE
+  // =====================================================
+  return {
+    data,
+
+    totalCount,
+
+    currentPage: pageNumber,
+
+    totalPages: Math.ceil(totalCount / limitNumber),
+  };
+};
+
 module.exports = {
   JSON: GraphQLJSON,
   Upload: GraphQLUpload,
@@ -437,491 +784,26 @@ module.exports = {
         throw new Error(error.message);
       }
     },
-    //---this api call without authentication as it is used in public search page
     getAstrologerListBySearch: async (_, { searchInput }) => {
       try {
-        const {
-          query,
-          sortField,
-          category,
-          sortOrder,
-          limit = 10,
-          page = 1,
-          type,
-        } = searchInput || {};
-
-        const skip = (page - 1) * limit;
-
-        let orderBy = { createdAt: "desc" };
-
-        if (sortField) {
-          const sortMap = {
-            EXPERIENCE: "experience",
-            RATING: "rating",
-          };
-
-          if (sortMap[sortField]) {
-            orderBy = {
-              [sortMap[sortField]]: sortOrder === "ASC" ? "asc" : "desc",
-            };
-          }
-        }
-
-        const where = {
-          isDeleted: false,
-          ...(query && {
-            OR: [
-              {
-                name: {
-                  contains: query,
-                  mode: "insensitive",
-                },
-              },
-              {
-                skills: {
-                  has: query,
-                },
-              },
-              {
-                languages: {
-                  has: query,
-                },
-              },
-            ],
-          }),
-        };
-
-        const [astrologers, totalCount] = await Promise.all([
-          prisma.astrologer.findMany({
-            where,
-            orderBy,
-            skip,
-            take: limit,
-            include: {
-              pricing: {
-                where: {
-                  isActive: true,
-                  ...(type && { type }),
-                },
-              },
-            },
-          }),
-
-          prisma.astrologer.count({ where }),
-        ]);
-
-        const astrologerIds = astrologers.map((a) => a.id);
-
-        const activeOffers = await prisma.astrologerOffer.findMany({
-          where: {
-            astrologerId: {
-              in: astrologerIds,
-            },
-            isActive: true,
-          },
-          include: {
-            offer: true,
-          },
-        });
-
-        const offerMap = {};
-
-        activeOffers.forEach((item) => {
-          offerMap[item.astrologerId] = item.offer;
-        });
-
-        const data = astrologers.map((astro) => {
-          const specialOffer = offerMap[astro.id];
-
-          return {
-            id: astro.id,
-            profilePic: astro.profilePic,
-            name: astro.name,
-            displayName: astro.displayName,
-            experience: astro.experience,
-         rating: !astro.rating ? 4.3 : astro.rating,
-            skills: astro.skills,
-            languages: astro.languages,
-            isBusy: astro.isBusy,
-            isOnline: astro.isOnline,
-            isChatActive: astro.isChatActive,
-            isCallActive: astro.isCallActive,
-            isLiveActive: astro.isLiveActive,
-            isEligibleChat: astro.isEligibleChat,
-            isEligibleCall: astro.isEligibleCall,
-            isEligibleVideo: astro.isEligibleVideo,
-            isEligibleAudio: astro.isEligibleAudio,
-            activeOffer: specialOffer
-              ? {
-                  id: specialOffer.id,
-                  offerName: specialOffer.offerName,
-                  price: specialOffer.price,
-                  description: specialOffer.description,
-                }
-              : null,
-
-            pricing: astro.pricing.map((p) => ({
-              type: p.type,
-
-              price: specialOffer ? specialOffer.price : p.price,
-                  offerPrice: p.offerPrice ?? null, 
-              originalPrice: p.price,
-
-              commissionPercent: p.commissionPercent,
-
-              isActive: p.isActive,
-            })),
-          };
-        });
-
-        return {
-          data,
-          totalCount,
-          currentPage: page,
-          totalPages: Math.ceil(totalCount / limit),
-        };
+        return await getAstrologerList(searchInput);
       } catch (error) {
-        console.error(error);
+        console.error("getAstrologerListBySearch ERROR:", error);
         throw new Error(error.message);
       }
     },
 
-    //-----this api call for with auth--
     getAstrologerListForUser: async (_, { searchInput }, context) => {
-      const requestId = `ASTRO-LIST-${Date.now()}-${Math.random()
-        .toString(36)
-        .substring(2, 8)}`;
-
-      const startedAt = Date.now();
-
       try {
-        if (!context?.user) {
-          console.error(`[${requestId}] ❌ Unauthorized`);
+        if (!context?.user?.id) {
           throw new Error("Unauthorized");
         }
+
         const userId = context.user.id;
-        const { query, sortField, sortOrder, category, type } =
-          searchInput || {};
 
-        const pageNumber = Math.max(1, Number(searchInput?.page) || 1);
-
-        const limitNumber = Math.min(
-          100,
-          Math.max(1, Number(searchInput?.limit) || 10),
-        );
-
-        const skip = (pageNumber - 1) * limitNumber;
-
-        let orderBy = {
-          createdAt: "desc",
-        };
-
-        if (sortField) {
-          const sortMap = {
-            EXPERIENCE: "experience",
-            RATING: "rating",
-          };
-
-          const field = sortMap[String(sortField).toUpperCase()];
-
-          if (field) {
-            orderBy = {
-              [field]:
-                String(sortOrder).toUpperCase() === "ASC" ? "asc" : "desc",
-            };
-          }
-        }
-        const AND = [];
-        if (query && String(query).trim()) {
-          const searchQuery = String(query).trim();
-
-          AND.push({
-            OR: [
-              {
-                name: {
-                  contains: searchQuery,
-                  mode: "insensitive",
-                },
-              },
-              {
-                skills: {
-                  has: searchQuery,
-                },
-              },
-              {
-                problems: {
-                  has: searchQuery,
-                },
-              },
-              {
-                languages: {
-                  has: searchQuery,
-                },
-              },
-            ],
-          });
-        }
-
-        if (category && String(category).toLowerCase() !== "all") {
-          AND.push({
-            OR: [
-              {
-                skills: {
-                  has: category,
-                },
-              },
-              {
-                problems: {
-                  has: category,
-                },
-              },
-            ],
-          });
-        }
-        const where = {
-          isDeleted: false,
-
-          ...(AND.length > 0
-            ? {
-                AND,
-              }
-            : {}),
-        };
-
-        const countStart = Date.now();
-
-        const totalCount = await prisma.astrologer.count({
-          where,
-        });
-
-        const findStart = Date.now();
-
-        const astrologers = await prisma.astrologer.findMany({
-          where,
-
-          orderBy,
-
-          skip,
-
-          take: limitNumber,
-
-          include: {
-            pricing: {
-              where: {
-                isActive: true,
-
-                ...(type
-                  ? {
-                      type,
-                    }
-                  : {}),
-              },
-            },
-          },
-        });
-
-        const astrologerIds = astrologers.map((astro) => astro.id);
-        const pricingConfig = await prisma.pricingConfig.findFirst();
-        const usage = await prisma.userOfferUsage.findUnique({
-          where: {
-            userId,
-          },
-        });
-
-        let activeOffers = [];
-
-        if (astrologerIds.length > 0) {
-          const offerStart = Date.now();
-
-          activeOffers = await prisma.astrologerOffer.findMany({
-            where: {
-              astrologerId: {
-                in: astrologerIds,
-              },
-
-              isActive: true,
-            },
-
-            include: {
-              offer: true,
-            },
-          });
-        } else {
-          console.log(
-            `[${requestId}] No astrologers found, skipping offer query`,
-          );
-        }
-
-        const offerMap = new Map();
-
-        for (const item of activeOffers) {
-          if (!offerMap.has(item.astrologerId)) {
-            offerMap.set(item.astrologerId, item.offer);
-          }
-        }
-
-        const data = astrologers.map((astro, index) => {
-          try {
-            const specialOffer = offerMap.get(astro.id);
-
-            const pricing = Array.isArray(astro.pricing)
-              ? astro.pricing.map((p) => {
-                  let finalPrice = p.price;
-
-                  let appliedOffer = null;
-
-                  if (specialOffer) {
-                    finalPrice = specialOffer.price;
-
-                    appliedOffer = specialOffer.offerName;
-                  } else if (
-                    pricingConfig?.isFirstOfferEnabled &&
-                    !usage?.usedFirst
-                  ) {
-                    finalPrice =
-                      p.type === "CHAT"
-                        ? pricingConfig.firstChatPrice
-                        : pricingConfig.firstCallPrice;
-
-                    appliedOffer = "FIRST_TIME_OFFER";
-                  } else if (
-                    pricingConfig?.isSecondOfferEnabled &&
-                    usage?.usedFirst &&
-                    !usage?.usedSecond
-                  ) {
-                    finalPrice =
-                      p.type === "CHAT"
-                        ? pricingConfig.secondChatPrice
-                        : pricingConfig.secondCallPrice;
-
-                    appliedOffer = "SECOND_TIME_OFFER";
-                  }
-
-                  // =================================================
-                  // 4. GLOBAL OFFER
-                  // =================================================
-                  else if (pricingConfig?.isGlobalOfferEnabled) {
-                    finalPrice =
-                      p.type === "CHAT"
-                        ? pricingConfig.globalChatPrice
-                        : pricingConfig.globalCallPrice;
-
-                    appliedOffer = "GLOBAL_OFFER";
-                  }
-
-                  return {
-                    type: p.type,
-
-                    price: finalPrice,
-
-                    originalPrice: p.price,
-
-                    offerPrice: p.offerPrice ?? null,
-
-                    appliedOffer,
-
-                    commissionPercent: p.commissionPercent,
-
-                    isActive: p.isActive,
-                  };
-                })
-              : [];
-
-            return {
-              id: astro.id,
-
-              profilePic: astro.profilePic,
-
-              name: astro.name,
-              tags: astro.tags,
-
-              displayName: astro.displayName,
-
-              experience: astro.experience,
-
-              rating: !astro.rating ? 4.3 : astro.rating,
-
-              skills: astro.skills,
-
-              problems: astro.problems,
-
-              languages: astro.languages,
-
-              isBusy: astro.isBusy,
-
-              isOnline: astro.isOnline,
-
-              isChatActive: astro.isChatActive,
-
-              isCallActive: astro.isCallActive,
-
-              isLiveActive: astro.isLiveActive,
-
-              activeOffer: specialOffer
-                ? {
-                    id: specialOffer.id,
-
-                    offerName: specialOffer.offerName,
-
-                    price: specialOffer.price,
-
-                    description: specialOffer.description,
-                  }
-                : null,
-
-              pricing,
-            };
-          } catch (mapError) {
-            console.error(
-              `[${requestId}] ❌ ERROR mapping astrologer ${astro.id}`,
-            );
-
-            console.error(`[${requestId}] Mapping error:`, mapError);
-
-            throw mapError;
-          }
-        });
-
-        const totalPages = Math.ceil(totalCount / limitNumber);
-
-        const response = {
-          data,
-
-          totalCount,
-
-          currentPage: pageNumber,
-
-          totalPages,
-        };
-
-        return response;
+        return await getAstrologerList(searchInput, userId);
       } catch (error) {
-        console.error(
-          "\n======================================================",
-        );
-
-        console.error(`🔥 ${requestId} getAstrologerListForUser ERROR`);
-
-        console.error("======================================================");
-
-        console.error(`[${requestId}] Error name:`, error?.name);
-
-        console.error(`[${requestId}] Error message:`, error?.message);
-
-        console.error(`[${requestId}] Error code:`, error?.code);
-
-        console.error(`[${requestId}] Error meta:`, error?.meta);
-
-        console.error(`[${requestId}] Error stack:`, error?.stack);
-
-        console.error(
-          `[${requestId}] Total duration:`,
-          Date.now() - startedAt,
-          "ms",
-        );
-
-        console.error("======================================================");
-
+        console.error("getAstrologerListForUser ERROR:", error);
         throw error;
       }
     },
@@ -1725,26 +1607,26 @@ module.exports = {
       }
     },
 
-   getGifts: async (_, __, context) => {
-  try {
-    const gifts = await prisma.gift.findMany({
-      where: {
-        status: "active",
-      },
-      orderBy: {
-        amount: "asc",
-      },
-    });
+    getGifts: async (_, __, context) => {
+      try {
+        const gifts = await prisma.gift.findMany({
+          where: {
+            status: "active",
+          },
+          orderBy: {
+            amount: "asc",
+          },
+        });
 
-    return {
-      data: gifts,
-      totalCount: gifts.length,
-    };
-  } catch (error) {
-    console.error("getGifts error:", error);
-    throw new Error(error.message || "Failed to fetch gifts");
-  }
-},
+        return {
+          data: gifts,
+          totalCount: gifts.length,
+        };
+      } catch (error) {
+        console.error("getGifts error:", error);
+        throw new Error(error.message || "Failed to fetch gifts");
+      }
+    },
 
     getBanners: async (_, { language }) => {
       try {
@@ -4495,7 +4377,7 @@ module.exports = {
             liveStreamId,
             userId: user.id,
             status: {
-              in: ["PENDING", "ACCEPTED","ENDED","REJECTED"],
+              in: ["PENDING", "ACCEPTED", "ENDED", "REJECTED"],
             },
           },
           orderBy: {
@@ -4620,351 +4502,336 @@ module.exports = {
       };
     },
     getMyLiveInteractionHistory: async (_, { searchInput = {} }, { user }) => {
-  try {
-    // =====================================================
-    // 1. Authentication
-    // =====================================================
+      try {
+        // =====================================================
+        // 1. Authentication
+        // =====================================================
 
-    if (!user?.id) {
-      throw new Error("Unauthorized");
-    }
-
-    // =====================================================
-    // 2. Search input
-    // =====================================================
-
-    const {
-      query,
-      sessionId,
-      astrologerName,
-      status,
-      interactionType,
-      filterType,
-      startDate,
-      endDate,
-      page = 1,
-      limit = 10,
-    } = searchInput;
-
-    // =====================================================
-    // 3. Pagination
-    // =====================================================
-
-    const safePage = Math.max(Number(page) || 1, 1);
-
-    const safeLimit = Math.min(
-      Math.max(Number(limit) || 10, 1),
-      100
-    );
-
-    const skip = (safePage - 1) * safeLimit;
-
-    // =====================================================
-    // 4. Base WHERE
-    // =====================================================
-
-    // Always fetch history belonging to the logged-in user.
-    const where = {
-      userId: user.id,
-    };
-
-    if (sessionId?.trim()) {
-      where.id = sessionId.trim();
-    }
-
-    if (status) {
-      where.status = status;
-    }
-
-    if (interactionType) {
-      where.interactionType = interactionType;
-    }
-
-    // =====================================================
-    // 5. Search filters
-    // =====================================================
-
-    const searchFilters = [];
-
-    if (query?.trim()) {
-      const searchValue = query.trim();
-
-      searchFilters.push(
-        {
-          id: {
-            contains: searchValue,
-            mode: "insensitive",
-          },
-        },
-        {
-          astrologer: {
-            name: {
-              contains: searchValue,
-              mode: "insensitive",
-            },
-          },
-        },
-        {
-          astrologer: {
-            displayName: {
-              contains: searchValue,
-              mode: "insensitive",
-            },
-          },
+        if (!user?.id) {
+          throw new Error("Unauthorized");
         }
-      );
-    }
 
-    if (astrologerName?.trim()) {
-      searchFilters.push({
-        astrologer: {
-          OR: [
+        // =====================================================
+        // 2. Search input
+        // =====================================================
+
+        const {
+          query,
+          sessionId,
+          astrologerName,
+          status,
+          interactionType,
+          filterType,
+          startDate,
+          endDate,
+          page = 1,
+          limit = 10,
+        } = searchInput;
+
+        // =====================================================
+        // 3. Pagination
+        // =====================================================
+
+        const safePage = Math.max(Number(page) || 1, 1);
+
+        const safeLimit = Math.min(Math.max(Number(limit) || 10, 1), 100);
+
+        const skip = (safePage - 1) * safeLimit;
+
+        // =====================================================
+        // 4. Base WHERE
+        // =====================================================
+
+        // Always fetch history belonging to the logged-in user.
+        const where = {
+          userId: user.id,
+        };
+
+        if (sessionId?.trim()) {
+          where.id = sessionId.trim();
+        }
+
+        if (status) {
+          where.status = status;
+        }
+
+        if (interactionType) {
+          where.interactionType = interactionType;
+        }
+
+        // =====================================================
+        // 5. Search filters
+        // =====================================================
+
+        const searchFilters = [];
+
+        if (query?.trim()) {
+          const searchValue = query.trim();
+
+          searchFilters.push(
             {
-              name: {
-                contains: astrologerName.trim(),
+              id: {
+                contains: searchValue,
                 mode: "insensitive",
               },
             },
             {
-              displayName: {
-                contains: astrologerName.trim(),
-                mode: "insensitive",
+              astrologer: {
+                name: {
+                  contains: searchValue,
+                  mode: "insensitive",
+                },
               },
             },
-          ],
-        },
-      });
-    }
-
-    if (searchFilters.length > 0) {
-      where.AND = [
-        {
-          OR: searchFilters,
-        },
-      ];
-    }
-
-    // =====================================================
-    // 6. Date filters (IST)
-    // =====================================================
-
-    let start;
-    let end;
-
-    const now = new Date();
-
-    switch (filterType) {
-      case "TODAY": {
-        const istDate = new Date(
-          now.toLocaleString("en-US", {
-            timeZone: "Asia/Kolkata",
-          })
-        );
-
-        const year = istDate.getFullYear();
-        const month = istDate.getMonth();
-        const day = istDate.getDate();
-
-        start = new Date(
-          `${year}-${String(month + 1).padStart(2, "0")}-${String(
-            day
-          ).padStart(2, "0")}T00:00:00+05:30`
-        );
-
-        end = new Date(start);
-        end.setUTCDate(end.getUTCDate() + 1);
-
-        break;
-      }
-
-      case "WEEK": {
-        start = new Date(now);
-        start.setDate(start.getDate() - 7);
-        end = now;
-        break;
-      }
-
-      case "MONTH": {
-        start = new Date(now);
-        start.setMonth(start.getMonth() - 1);
-        end = now;
-        break;
-      }
-
-      case "YEAR": {
-        start = new Date(now);
-        start.setFullYear(start.getFullYear() - 1);
-        end = now;
-        break;
-      }
-
-      case "CUSTOM": {
-        if (startDate) {
-          start = new Date(`${startDate}T00:00:00+05:30`);
+            {
+              astrologer: {
+                displayName: {
+                  contains: searchValue,
+                  mode: "insensitive",
+                },
+              },
+            },
+          );
         }
 
-        if (endDate) {
-          end = new Date(`${endDate}T00:00:00+05:30`);
-          end.setUTCDate(end.getUTCDate() + 1);
+        if (astrologerName?.trim()) {
+          searchFilters.push({
+            astrologer: {
+              OR: [
+                {
+                  name: {
+                    contains: astrologerName.trim(),
+                    mode: "insensitive",
+                  },
+                },
+                {
+                  displayName: {
+                    contains: astrologerName.trim(),
+                    mode: "insensitive",
+                  },
+                },
+              ],
+            },
+          });
         }
 
-        break;
-      }
-
-      default:
-        break;
-    }
-
-    if (start || end) {
-      where.createdAt = {};
-
-      if (start) {
-        where.createdAt.gte = start;
-      }
-
-      if (end) {
-        where.createdAt.lt = end;
-      }
-    }
-
-    // =====================================================
-    // 7. Fetch history
-    // =====================================================
-
-    const [
-      requests,
-      totalCount,
-      aggregate,
-      audioCount,
-      videoCount,
-    ] = await Promise.all([
-      prisma.liveInteractionRequest.findMany({
-        where,
-
-        include: {
-          astrologer: {
-            select: {
-              id: true,
-              name: true,
-              displayName: true,
-            },
-          },
-        },
-
-        orderBy: {
-          createdAt: "desc",
-        },
-
-        skip,
-        take: safeLimit,
-      }),
-
-      prisma.liveInteractionRequest.count({
-        where,
-      }),
-
-      prisma.liveInteractionRequest.aggregate({
-        where,
-
-        _sum: {
-          chargedCoins: true,
-        },
-      }),
-
-      prisma.liveInteractionRequest.count({
-        where: {
-          AND: [
-            where,
+        if (searchFilters.length > 0) {
+          where.AND = [
             {
-              interactionType: "AUDIO",
+              OR: searchFilters,
             },
-          ],
-        },
-      }),
+          ];
+        }
 
-      prisma.liveInteractionRequest.count({
-        where: {
-          AND: [
-            where,
-            {
-              interactionType: "VIDEO",
-            },
-          ],
-        },
-      }),
-    ]);
+        // =====================================================
+        // 6. Date filters (IST)
+        // =====================================================
 
-    // =====================================================
-    // 8. Format response
-    // =====================================================
+        let start;
+        let end;
 
-    const formattedData = requests.map((item) => ({
-  sessionId: item.id,
+        const now = new Date();
 
-  liveStreamId: item.liveStreamId,
+        switch (filterType) {
+          case "TODAY": {
+            const istDate = new Date(
+              now.toLocaleString("en-US", {
+                timeZone: "Asia/Kolkata",
+              }),
+            );
 
-  astrologerId: item.astrologerId,
+            const year = istDate.getFullYear();
+            const month = istDate.getMonth();
+            const day = istDate.getDate();
 
-  astrologerName:
-    item.astrologer?.displayName ||
-    item.astrologer?.name ||
-    "",
+            start = new Date(
+              `${year}-${String(month + 1).padStart(2, "0")}-${String(
+                day,
+              ).padStart(2, "0")}T00:00:00+05:30`,
+            );
 
-  interactionType: item.interactionType,
+            end = new Date(start);
+            end.setUTCDate(end.getUTCDate() + 1);
 
-  status: item.status,
+            break;
+          }
 
-  ratePerMin: Number(item.ratePerMin || 0),
+          case "WEEK": {
+            start = new Date(now);
+            start.setDate(start.getDate() - 7);
+            end = now;
+            break;
+          }
 
-  chargedCoins: Number(item.chargedCoins || 0),
+          case "MONTH": {
+            start = new Date(now);
+            start.setMonth(start.getMonth() - 1);
+            end = now;
+            break;
+          }
 
-  durationSeconds: item.durationSeconds || 0,
+          case "YEAR": {
+            start = new Date(now);
+            start.setFullYear(start.getFullYear() - 1);
+            end = now;
+            break;
+          }
 
-  billableMinutes: item.billableMinutes || 0,
+          case "CUSTOM": {
+            if (startDate) {
+              start = new Date(`${startDate}T00:00:00+05:30`);
+            }
 
-  requestedAt: item.requestedAt?.toISOString() || null,
+            if (endDate) {
+              end = new Date(`${endDate}T00:00:00+05:30`);
+              end.setUTCDate(end.getUTCDate() + 1);
+            }
 
-  acceptedAt: item.acceptedAt?.toISOString() || null,
+            break;
+          }
 
-  startedAt: item.startedAt?.toISOString() || null,
+          default:
+            break;
+        }
 
-  endedAt: item.endedAt?.toISOString() || null,
+        if (start || end) {
+          where.createdAt = {};
 
-  createdAt: item.createdAt.toISOString(),
-}));
+          if (start) {
+            where.createdAt.gte = start;
+          }
 
-    // =====================================================
-    // 9. Return response
-    // =====================================================
+          if (end) {
+            where.createdAt.lt = end;
+          }
+        }
 
-    return {
-      data: formattedData,
+        // =====================================================
+        // 7. Fetch history
+        // =====================================================
 
-      totalCount,
+        const [requests, totalCount, aggregate, audioCount, videoCount] =
+          await Promise.all([
+            prisma.liveInteractionRequest.findMany({
+              where,
 
-      currentPage: safePage,
+              include: {
+                astrologer: {
+                  select: {
+                    id: true,
+                    name: true,
+                    displayName: true,
+                  },
+                },
+              },
 
-      totalPages: Math.ceil(totalCount / safeLimit),
+              orderBy: {
+                createdAt: "desc",
+              },
 
-      totalCoinsDeducted: Number(
-        aggregate?._sum?.chargedCoins || 0
-      ),
+              skip,
+              take: safeLimit,
+            }),
 
-      totalAudioCalls: audioCount,
+            prisma.liveInteractionRequest.count({
+              where,
+            }),
 
-      totalVideoCalls: videoCount,
-    };
-  } catch (error) {
-    console.error(
-      "getMyLiveInteractionHistory error:",
-      error
-    );
+            prisma.liveInteractionRequest.aggregate({
+              where,
 
-    throw new Error(
-      error.message || "Failed to fetch live interaction history"
-    );
-  }
-},
+              _sum: {
+                chargedCoins: true,
+              },
+            }),
+
+            prisma.liveInteractionRequest.count({
+              where: {
+                AND: [
+                  where,
+                  {
+                    interactionType: "AUDIO",
+                  },
+                ],
+              },
+            }),
+
+            prisma.liveInteractionRequest.count({
+              where: {
+                AND: [
+                  where,
+                  {
+                    interactionType: "VIDEO",
+                  },
+                ],
+              },
+            }),
+          ]);
+
+        // =====================================================
+        // 8. Format response
+        // =====================================================
+
+        const formattedData = requests.map((item) => ({
+          sessionId: item.id,
+
+          liveStreamId: item.liveStreamId,
+
+          astrologerId: item.astrologerId,
+
+          astrologerName:
+            item.astrologer?.displayName || item.astrologer?.name || "",
+
+          interactionType: item.interactionType,
+
+          status: item.status,
+
+          ratePerMin: Number(item.ratePerMin || 0),
+
+          chargedCoins: Number(item.chargedCoins || 0),
+
+          durationSeconds: item.durationSeconds || 0,
+
+          billableMinutes: item.billableMinutes || 0,
+
+          requestedAt: item.requestedAt?.toISOString() || null,
+
+          acceptedAt: item.acceptedAt?.toISOString() || null,
+
+          startedAt: item.startedAt?.toISOString() || null,
+
+          endedAt: item.endedAt?.toISOString() || null,
+
+          createdAt: item.createdAt.toISOString(),
+        }));
+
+        // =====================================================
+        // 9. Return response
+        // =====================================================
+
+        return {
+          data: formattedData,
+
+          totalCount,
+
+          currentPage: safePage,
+
+          totalPages: Math.ceil(totalCount / safeLimit),
+
+          totalCoinsDeducted: Number(aggregate?._sum?.chargedCoins || 0),
+
+          totalAudioCalls: audioCount,
+
+          totalVideoCalls: videoCount,
+        };
+      } catch (error) {
+        console.error("getMyLiveInteractionHistory error:", error);
+
+        throw new Error(
+          error.message || "Failed to fetch live interaction history",
+        );
+      }
+    },
   },
   //----------------start code for mutation ----------------------------
   Mutation: {
@@ -4987,14 +4854,18 @@ module.exports = {
       }
     },
 
-    authWithOtp: async (_, { countryCode, mobile, otp, source ,playerId}, { res }) => {
+    authWithOtp: async (
+      _,
+      { countryCode, mobile, otp, source, playerId },
+      { res },
+    ) => {
       try {
         if (!countryCode || !mobile)
           throw new Error("Country code and mobile required");
         if (!otp) throw new Error("OTP required");
 
         const { accessToken, refreshToken, user, isNewUser, hasName } =
-          await verifyOTPService(countryCode, mobile, otp, source,playerId);
+          await verifyOTPService(countryCode, mobile, otp, source, playerId);
 
         if (res?.setHeader) {
           res.cookie("accessToken", accessToken, {
