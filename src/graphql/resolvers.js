@@ -438,153 +438,160 @@ module.exports = {
       }
     },
     //---this api call without authentication as it is used in public search page
-    getAstrologerListBySearch: async (_, { searchInput }) => {
-      try {
-        const {
-          query,
-          sortField,
-          category,
-          sortOrder,
-          limit = 10,
-          page = 1,
-          type,
-        } = searchInput || {};
+   getAstrologerListBySearch: async (_, { searchInput }) => {
+  try {
+    const {
+      query,
+      sortField,
+      category,
+      sortOrder,
+      limit = 10,
+      page = 1,
+      type,
+    } = searchInput || {};
 
-        const skip = (page - 1) * limit;
+    const skip = (page - 1) * limit;
 
-        let orderBy = { createdAt: "desc" };
+    // Online astrologers first, offline astrologers afterwards
+    let orderBy = [
+      { isOnline: "desc" },
+      { createdAt: "desc" },
+    ];
 
-        if (sortField) {
-          const sortMap = {
-            EXPERIENCE: "experience",
-            RATING: "rating",
-          };
+    // Apply secondary sorting
+    if (sortField) {
+      const sortMap = {
+        EXPERIENCE: "experience",
+        RATING: "rating",
+      };
 
-          if (sortMap[sortField]) {
-            orderBy = {
-              [sortMap[sortField]]: sortOrder === "ASC" ? "asc" : "desc",
-            };
-          }
-        }
-
-        const where = {
-          isDeleted: false,
-          ...(query && {
-            OR: [
-              {
-                name: {
-                  contains: query,
-                  mode: "insensitive",
-                },
-              },
-              {
-                skills: {
-                  has: query,
-                },
-              },
-              {
-                languages: {
-                  has: query,
-                },
-              },
-            ],
-          }),
-        };
-
-        const [astrologers, totalCount] = await Promise.all([
-          prisma.astrologer.findMany({
-            where,
-            orderBy,
-            skip,
-            take: limit,
-            include: {
-              pricing: {
-                where: {
-                  isActive: true,
-                  ...(type && { type }),
-                },
-              },
-            },
-          }),
-
-          prisma.astrologer.count({ where }),
-        ]);
-
-        const astrologerIds = astrologers.map((a) => a.id);
-
-        const activeOffers = await prisma.astrologerOffer.findMany({
-          where: {
-            astrologerId: {
-              in: astrologerIds,
-            },
-            isActive: true,
+      if (sortMap[sortField]) {
+        orderBy = [
+          { isOnline: "desc" },
+          {
+            [sortMap[sortField]]:
+              sortOrder === "ASC" ? "asc" : "desc",
           },
-          include: {
-            offer: true,
-          },
-        });
-
-        const offerMap = {};
-
-        activeOffers.forEach((item) => {
-          offerMap[item.astrologerId] = item.offer;
-        });
-
-        const data = astrologers.map((astro) => {
-          const specialOffer = offerMap[astro.id];
-
-          return {
-            id: astro.id,
-            profilePic: astro.profilePic,
-            name: astro.name,
-            displayName: astro.displayName,
-            experience: astro.experience,
-         rating: !astro.rating ? 4.3 : astro.rating,
-            skills: astro.skills,
-            languages: astro.languages,
-            isBusy: astro.isBusy,
-            isOnline: astro.isOnline,
-            isChatActive: astro.isChatActive,
-            isCallActive: astro.isCallActive,
-            isLiveActive: astro.isLiveActive,
-            isEligibleChat: astro.isEligibleChat,
-            isEligibleCall: astro.isEligibleCall,
-            isEligibleVideo: astro.isEligibleVideo,
-            isEligibleAudio: astro.isEligibleAudio,
-            activeOffer: specialOffer
-              ? {
-                  id: specialOffer.id,
-                  offerName: specialOffer.offerName,
-                  price: specialOffer.price,
-                  description: specialOffer.description,
-                }
-              : null,
-
-            pricing: astro.pricing.map((p) => ({
-              type: p.type,
-
-              price: specialOffer ? specialOffer.price : p.price,
-                  offerPrice: p.offerPrice ?? null, 
-              originalPrice: p.price,
-
-              commissionPercent: p.commissionPercent,
-
-              isActive: p.isActive,
-            })),
-          };
-        });
-
-        return {
-          data,
-          totalCount,
-          currentPage: page,
-          totalPages: Math.ceil(totalCount / limit),
-        };
-      } catch (error) {
-        console.error(error);
-        throw new Error(error.message);
+        ];
       }
-    },
+    }
+
+    const where = {
+      isDeleted: false,
+      ...(query && {
+        OR: [
+          {
+            name: {
+              contains: query,
+              mode: "insensitive",
+            },
+          },
+          {
+            skills: {
+              has: query,
+            },
+          },
+          {
+            languages: {
+              has: query,
+            },
+          },
+        ],
+      }),
+    };
+
+    const [astrologers, totalCount] = await Promise.all([
+      prisma.astrologer.findMany({
+        where,
+        orderBy,
+        skip,
+        take: limit,
+        include: {
+          pricing: {
+            where: {
+              isActive: true,
+              ...(type && { type }),
+            },
+          },
+        },
+      }),
+
+      prisma.astrologer.count({ where }),
+    ]);
+
+    const astrologerIds = astrologers.map((a) => a.id);
+
+    const activeOffers = await prisma.astrologerOffer.findMany({
+      where: {
+        astrologerId: {
+          in: astrologerIds,
+        },
+        isActive: true,
+      },
+      include: {
+        offer: true,
+      },
+    });
+
+    const offerMap = {};
+
+    activeOffers.forEach((item) => {
+      offerMap[item.astrologerId] = item.offer;
+    });
+
+    const data = astrologers.map((astro) => {
+      const specialOffer = offerMap[astro.id];
+
+      return {
+        id: astro.id,
+        profilePic: astro.profilePic,
+        name: astro.name,
+        displayName: astro.displayName,
+        experience: astro.experience,
+        rating: !astro.rating ? 4.3 : astro.rating,
+        skills: astro.skills,
+        languages: astro.languages,
+        isBusy: astro.isBusy,
+        isOnline: astro.isOnline,
+        isChatActive: astro.isChatActive,
+        isCallActive: astro.isCallActive,
+        isLiveActive: astro.isLiveActive,
+        isEligibleChat: astro.isEligibleChat,
+        isEligibleCall: astro.isEligibleCall,
+        isEligibleVideo: astro.isEligibleVideo,
+        isEligibleAudio: astro.isEligibleAudio,
+
+        activeOffer: specialOffer
+          ? {
+              id: specialOffer.id,
+              offerName: specialOffer.offerName,
+              price: specialOffer.price,
+              description: specialOffer.description,
+            }
+          : null,
+
+        pricing: astro.pricing.map((p) => ({
+          type: p.type,
+          price: specialOffer ? specialOffer.price : p.price,
+          offerPrice: p.offerPrice ?? null,
+          originalPrice: p.price,
+          commissionPercent: p.commissionPercent,
+          isActive: p.isActive,
+        })),
+      };
+    });
+
+    return {
+      data,
+      totalCount,
+      currentPage: page,
+      totalPages: Math.ceil(totalCount / limit),
+    };
+  } catch (error) {
+    console.error(error);
+    throw new Error(error.message);
+  }
+},
 
     //-----this api call for with auth--
     getAstrologerListForUser: async (_, { searchInput }, context) => {
@@ -613,7 +620,7 @@ module.exports = {
         const skip = (pageNumber - 1) * limitNumber;
 
         let orderBy = {
-          createdAt: "desc",
+          isOnline: "desc"
         };
 
         if (sortField) {
