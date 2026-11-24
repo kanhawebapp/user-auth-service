@@ -639,7 +639,10 @@ getAstrologerListForUser: async (_, { searchInput }, context) => {
     // STEP 3: SORTING
     // ONLINE FIRST, THEN SELECTED SORT FIELD
     // =====================================================
-    const normalizedSortField = String(sortField || "").toUpperCase();
+
+    const normalizedSortField = String(sortField || "")
+      .trim()
+      .toUpperCase();
 
     const normalizedSortOrder =
       String(sortOrder || "DESC").toUpperCase() === "ASC"
@@ -653,13 +656,15 @@ getAstrologerListForUser: async (_, { searchInput }, context) => {
 
     const secondarySortField = sortMap[normalizedSortField];
 
+    // Online astrologers will ALWAYS appear before offline.
+    // Selected sorting will be applied within both groups.
     const orderBy = [
-      // Priority 1: Online astrologers first
       {
         isOnline: "desc",
       },
 
-      // Priority 2: Selected sorting within online/offline groups
+      // If user selects rating or experience, apply it.
+      // Otherwise, show newest astrologers first.
       secondarySortField
         ? {
             [secondarySortField]: normalizedSortOrder,
@@ -668,13 +673,17 @@ getAstrologerListForUser: async (_, { searchInput }, context) => {
             createdAt: "desc",
           },
 
-      // Priority 3: Consistent ordering when values are equal
+      // Consistent ordering for equal values.
       {
         id: "asc",
       },
     ];
 
-    console.log(`[${requestId}] Sorting configuration:`, orderBy);
+    console.log(`[${requestId}] Sorting configuration:`, {
+      sortField: normalizedSortField || "DEFAULT",
+      sortOrder: normalizedSortOrder,
+      orderBy,
+    });
 
     // =====================================================
     // STEP 4: SEARCH FILTER
@@ -842,7 +851,7 @@ getAstrologerListForUser: async (_, { searchInput }, context) => {
     // =====================================================
     // STEP 13: FORMAT ASTROLOGER RESPONSE
     // =====================================================
-    const data = astrologers.map((astro, index) => {
+    const data = astrologers.map((astro) => {
       try {
         const specialOffer = offerMap.get(astro.id);
 
