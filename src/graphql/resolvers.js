@@ -628,7 +628,7 @@ getAstrologerListForUser: async (_, { searchInput }, context) => {
 
     console.log(
       `[${requestId}] searchInput:`,
-      JSON.stringify(searchInput || {}, null, 2),
+      JSON.stringify(searchInput || {}, null, 2)
     );
 
     const { query, sortField, sortOrder, category, type } =
@@ -641,7 +641,7 @@ getAstrologerListForUser: async (_, { searchInput }, context) => {
 
     const limitNumber = Math.min(
       100,
-      Math.max(1, Number(searchInput?.limit) || 10),
+      Math.max(1, Number(searchInput?.limit) || 10)
     );
 
     const skip = (pageNumber - 1) * limitNumber;
@@ -656,15 +656,22 @@ getAstrologerListForUser: async (_, { searchInput }, context) => {
 
     // =====================================================
     // STEP 4: ORDER BY
+    //
     // Priority:
-    // 1. Online first
-    // 2. Requested service active first
-    // 3. Not busy first
-    // 4. Rating / Experience
+    // 1. Online astrologers first
+    // 2. Rating / Experience within online/offline groups
+    // 3. Stable ordering
+    //
+    // IMPORTANT:
+    // isChatActive, isCallActive and isBusy are NOT placed
+    // before rating, because they could change the requested
+    // rating/experience order within the online group.
     // =====================================================
     console.log(`\n[${requestId}] STEP 4: Building orderBy`);
 
-    const normalizedType = String(type || "").trim().toUpperCase();
+    const normalizedType = String(type || "")
+      .trim()
+      .toUpperCase();
 
     const normalizedSortField = String(sortField || "")
       .trim()
@@ -683,32 +690,12 @@ getAstrologerListForUser: async (_, { searchInput }, context) => {
     const secondarySortField = sortMap[normalizedSortField];
 
     const orderBy = [
-      // First priority: online astrologers
+      // 1. Online astrologers always first
       {
         isOnline: "desc",
       },
 
-      // Second priority: requested service availability
-      ...(normalizedType === "CHAT"
-        ? [
-            {
-              isChatActive: "desc",
-            },
-          ]
-        : normalizedType === "CALL"
-          ? [
-              {
-                isCallActive: "desc",
-              },
-            ]
-          : []),
-
-      // Third priority: available astrologers before busy astrologers
-      {
-        isBusy: "asc",
-      },
-
-      // Fourth priority: selected sorting field
+      // 2. Requested sorting within online/offline groups
       secondarySortField
         ? {
             [secondarySortField]: normalizedSortOrder,
@@ -717,20 +704,27 @@ getAstrologerListForUser: async (_, { searchInput }, context) => {
             createdAt: "desc",
           },
 
-      // Stable ordering
+      // 3. Stable ordering
       {
         id: "asc",
       },
     ];
 
+    console.log(`[${requestId}] normalizedType:`, normalizedType);
+
     console.log(
-      `[${requestId}] normalizedType:`,
-      normalizedType,
+      `[${requestId}] normalizedSortField:`,
+      normalizedSortField
+    );
+
+    console.log(
+      `[${requestId}] normalizedSortOrder:`,
+      normalizedSortOrder
     );
 
     console.log(
       `[${requestId}] orderBy:`,
-      JSON.stringify(orderBy, null, 2),
+      JSON.stringify(orderBy, null, 2)
     );
 
     // =====================================================
@@ -802,7 +796,7 @@ getAstrologerListForUser: async (_, { searchInput }, context) => {
 
     console.log(
       `[${requestId}] FINAL WHERE:`,
-      JSON.stringify(where, null, 2),
+      JSON.stringify(where, null, 2)
     );
 
     // =====================================================
@@ -823,7 +817,7 @@ getAstrologerListForUser: async (_, { searchInput }, context) => {
     console.log(
       `[${requestId}] count duration:`,
       Date.now() - countStart,
-      "ms",
+      "ms"
     );
 
     // =====================================================
@@ -864,7 +858,7 @@ getAstrologerListForUser: async (_, { searchInput }, context) => {
     console.log(
       `[${requestId}] findMany duration:`,
       Date.now() - findStart,
-      "ms",
+      "ms"
     );
 
     // =====================================================
@@ -876,14 +870,14 @@ getAstrologerListForUser: async (_, { searchInput }, context) => {
 
     console.log(
       `[${requestId}] astrologerIds count:`,
-      astrologerIds.length,
+      astrologerIds.length
     );
 
     // =====================================================
     // STEP 9: PRICING CONFIG
     // =====================================================
     console.log(
-      `\n[${requestId}] STEP 9: BEFORE pricingConfig.findFirst()`,
+      `\n[${requestId}] STEP 9: BEFORE pricingConfig.findFirst()`
     );
 
     const pricingConfig = await prisma.pricingConfig.findFirst();
@@ -896,7 +890,7 @@ getAstrologerListForUser: async (_, { searchInput }, context) => {
     // STEP 10: USER OFFER USAGE
     // =====================================================
     console.log(
-      `\n[${requestId}] STEP 10: BEFORE userOfferUsage.findUnique()`,
+      `\n[${requestId}] STEP 10: BEFORE userOfferUsage.findUnique()`
     );
 
     const usage = await prisma.userOfferUsage.findUnique({
@@ -916,7 +910,7 @@ getAstrologerListForUser: async (_, { searchInput }, context) => {
 
     if (astrologerIds.length > 0) {
       console.log(
-        `\n[${requestId}] STEP 11: BEFORE astrologerOffer.findMany()`,
+        `\n[${requestId}] STEP 11: BEFORE astrologerOffer.findMany()`
       );
 
       const offerStart = Date.now();
@@ -939,17 +933,17 @@ getAstrologerListForUser: async (_, { searchInput }, context) => {
 
       console.log(
         `[${requestId}] Active offers count:`,
-        activeOffers.length,
+        activeOffers.length
       );
 
       console.log(
         `[${requestId}] Offer query duration:`,
         Date.now() - offerStart,
-        "ms",
+        "ms"
       );
     } else {
       console.log(
-        `[${requestId}] No astrologers found, skipping offer query`,
+        `[${requestId}] No astrologers found, skipping offer query`
       );
     }
 
@@ -977,12 +971,15 @@ getAstrologerListForUser: async (_, { searchInput }, context) => {
       console.log(
         `[${requestId}] Mapping astrologer ${
           index + 1
-        }/${astrologers.length}`,
+        }/${astrologers.length}`
       );
 
       console.log(`[${requestId}] Astrologer:`, {
         id: astro.id,
         name: astro.name,
+        isOnline: astro.isOnline,
+        isBusy: astro.isBusy,
+        rating: astro.rating,
       });
 
       try {
@@ -1111,7 +1108,7 @@ getAstrologerListForUser: async (_, { searchInput }, context) => {
         };
       } catch (mapError) {
         console.error(
-          `[${requestId}] ❌ ERROR mapping astrologer ${astro.id}`,
+          `[${requestId}] ❌ ERROR mapping astrologer ${astro.id}`
         );
 
         console.error(`[${requestId}] Mapping error:`, mapError);
@@ -1154,7 +1151,7 @@ getAstrologerListForUser: async (_, { searchInput }, context) => {
     console.log(
       `[${requestId}] Total duration:`,
       Date.now() - startedAt,
-      "ms",
+      "ms"
     );
 
     console.log("======================================================");
@@ -1165,7 +1162,7 @@ getAstrologerListForUser: async (_, { searchInput }, context) => {
     // ERROR
     // =====================================================
     console.error(
-      "\n======================================================",
+      "\n======================================================"
     );
 
     console.error(`🔥 ${requestId} getAstrologerListForUser ERROR`);
@@ -1185,7 +1182,7 @@ getAstrologerListForUser: async (_, { searchInput }, context) => {
     console.error(
       `[${requestId}] Total duration:`,
       Date.now() - startedAt,
-      "ms",
+      "ms"
     );
 
     console.error("======================================================");
